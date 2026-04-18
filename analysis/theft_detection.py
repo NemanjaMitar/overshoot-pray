@@ -2,28 +2,10 @@
 analysis/theft_detection.py
 
 Detection of Non-Technical Losses (NTL) in a distribution network.
-
-Background:
-  - Technical (physical) losses: caused by line resistance (I²R), typically 2-8%.
-  - Non-technical losses (NTL / theft): anything above the threshold for a given
-    voltage level that cannot be explained by physics.
+Silent library — no print statements outside __main__.
 
 Network hierarchy:
   TransmissionStation → Feeders33 → Feeders11 → DistributionSubstation (DT) → Customers
-
-Approach:
-  1. Use the TFES energy register (more reliable than V×I) with a 7-day window.
-  2. At F33 level: input (F33 meter) − sum of F11 meters on that F33 = loss.
-  3. At F11 level: input (F11 meter) − sum of DT meters on that F11 = loss.
-  4. Loss > NTL threshold → suspected theft.
-  5. Within each flagged F11 feeder: identify DTs with suspiciously low load factor
-     (consumption / nameplate capacity) — possible meter bypass.
-  6. Rank by absolute kWh loss — prioritises the biggest damage.
-
-Loss localisation logic:
-  F33 loss HIGH + F11 losses NORMAL  → theft between F33 and F11 junction
-  F33 loss HIGH + F11 losses HIGH    → theft at DT / customer level
-  F33 loss NORMAL + F11 loss HIGH    → localised theft on that specific F11
 """
 
 import sys
@@ -41,29 +23,24 @@ from get_data.db import q
 # CONSTANTS
 # ─────────────────────────────────────────────
 
-ANALYSIS_HOURS = 168           # 7-day window — longer = less scaling noise
+ANALYSIS_HOURS = 168
 
 COS_PHI        = 0.9
 TFES_WH_TO_KWH = 1000.0
 
-# Loss thresholds (%)
-THRESHOLD_TECHNICAL = 8.0      # Up to 8%  → normal technical losses
-THRESHOLD_NTL       = 15.0     # Above 15% → NTL suspected
-THRESHOLD_NTL_HIGH  = 30.0     # Above 30% → probable theft
-THRESHOLD_NTL_ALARM = 50.0     # Above 50% → alarm
+THRESHOLD_TECHNICAL = 8.0
+THRESHOLD_NTL       = 15.0
+THRESHOLD_NTL_HIGH  = 30.0
+THRESHOLD_NTL_ALARM = 50.0
 
-# Minimum data requirements
-MIN_COVERAGE_F11 = 0.30        # Min share of DTs with readings for F11 analysis
-MIN_COVERAGE_F33 = 0.30        # Min share of F11s with readings for F33 analysis
-MIN_KWH_FEEDER   = 10.0        # Min input kWh for a feeder to be analysed
-MIN_TFES_HOURS   = 8.0         # Min actual time span in TFES readings
+MIN_COVERAGE_F11 = 0.30
+MIN_COVERAGE_F33 = 0.30
+MIN_KWH_FEEDER   = 10.0
+MIN_TFES_HOURS   = 8.0
 
-# Load factor threshold for suspicious DTs
-LOAD_FACTOR_SUSPICIOUS = 0.02  # < 2% of nameplate over 7 days → possible bypass
+LOAD_FACTOR_SUSPICIOUS = 0.02
+MAX_SCALE_FACTOR       = 3.0
 
-MAX_SCALE_FACTOR = 3.0
-
-# Fallback nameplate (kVA) when missing from database
 FALLBACK_KVA_DT  =   500.0
 FALLBACK_KVA_F11 =  5000.0
 FALLBACK_KVA_F33 = 40000.0
@@ -109,30 +86,28 @@ class F11Result:
 
 @dataclass
 class F33Result:
-    f33_id:          int
-    name:            str
-    input_kwh:       float
-    output_kwh:      float       # Sum of measured F11 inputs
-    output_kwh_est:  float       # Coverage-corrected estimate
-    loss_kwh:        float
-    loss_pct:        Optional[float]
-    coverage:        float       # Share of F11s with valid readings
-    f11_count:       int
-    f11_measured:    int
-    status:          str
-    confidence:      str
+    f33_id:         int
+    name:           str
+    input_kwh:      float
+    output_kwh:     float
+    output_kwh_est: float
+    loss_kwh:       float
+    loss_pct:       Optional[float]
+    coverage:       float
+    f11_count:      int
+    f11_measured:   int
+    status:         str
+    confidence:     str
 
 
 @dataclass
 class TheftReport:
-    f11_feeders:     pd.DataFrame
-    f33_feeders:     pd.DataFrame
-    suspicious_dts:  pd.DataFrame
-    # F11 KPIs
+    f11_feeders:         pd.DataFrame
+    f33_feeders:         pd.DataFrame
+    suspicious_dts:      pd.DataFrame
     f11_total_input_kwh: float
     f11_total_loss_kwh:  float
     f11_total_ntl_kwh:   float
-    # F33 KPIs
     f33_total_input_kwh: float
     f33_total_loss_kwh:  float
     f33_total_ntl_kwh:   float
@@ -147,11 +122,13 @@ def chunk(lst, size=500):
         yield lst[i:i + size]
 
 
+def _nameplate_max_kwh(kva: float, hours: float) -> float:
+    if kva <= 0:
+        return float("inf")
+    return kva * COS_PHI * hours
+
+
 def _tfes_delta(meter_ids: list, hours: int) -> dict:
-    """
-    Returns {mid: {kwh, real_hours, n_readings}} using MAX-MIN TFES register delta.
-    Window: last `hours` hours from each meter's latest reading.
-    """
     if not meter_ids:
         return {}
     result = {}
@@ -190,7 +167,6 @@ def _tfes_delta(meter_ids: list, hours: int) -> dict:
                 continue
 
             real_hours = max((max_ts - min_ts).total_seconds() / 3600.0, 0.5)
-
             if real_hours < MIN_TFES_HOURS:
                 continue
 
@@ -205,22 +181,14 @@ def _tfes_delta(meter_ids: list, hours: int) -> dict:
 
 
 def _classify(loss_pct: Optional[float], coverage: float) -> tuple[str, str]:
-    """Returns (status, confidence)."""
     confidence = "HIGH" if coverage >= 0.80 else "MEDIUM" if coverage >= 0.50 else "LOW"
-
-    if loss_pct is None:                        return "UNKNOWN",           confidence
-    if loss_pct < 0:                            return "MEASUREMENT_ERROR", confidence
-    if loss_pct < THRESHOLD_TECHNICAL:          return "NORMAL",            confidence
-    if loss_pct < THRESHOLD_NTL:                return "WARNING",           confidence
-    if loss_pct < THRESHOLD_NTL_HIGH:           return "NTL",               confidence
-    if loss_pct < THRESHOLD_NTL_ALARM:          return "NTL_HIGH",          confidence
+    if loss_pct is None:               return "UNKNOWN",           confidence
+    if loss_pct < 0:                   return "MEASUREMENT_ERROR", confidence
+    if loss_pct < THRESHOLD_TECHNICAL: return "NORMAL",            confidence
+    if loss_pct < THRESHOLD_NTL:       return "WARNING",           confidence
+    if loss_pct < THRESHOLD_NTL_HIGH:  return "NTL",               confidence
+    if loss_pct < THRESHOLD_NTL_ALARM: return "NTL_HIGH",          confidence
     return "NTL_ALARM", confidence
-
-
-def _nameplate_max_kwh(kva: float, hours: float) -> float:
-    if kva <= 0:
-        return float("inf")
-    return kva * COS_PHI * hours
 
 
 # ─────────────────────────────────────────────
@@ -230,11 +198,7 @@ def _nameplate_max_kwh(kva: float, hours: float) -> float:
 class TheftDetector:
 
     def __init__(self):
-        print("Loading network topology...")
         self.top = self._load_topology()
-        print(f"  F33 feeders : {len(self.top['f33'])}")
-        print(f"  F11 feeders : {len(self.top['f11'])}")
-        print(f"  DTs         : {len(self.top['dt'])}")
 
     def _load_topology(self) -> dict:
         return {
@@ -264,7 +228,6 @@ class TheftDetector:
         return list(set(mids))
 
     def _build_energy(self, tfes: dict, hours: float) -> dict[int, float]:
-        """Apply nameplate cap and return {mid: kwh}."""
         cap: dict[int, float] = {}
         for level, fallback_kva in [
             ("dt",  FALLBACK_KVA_DT),
@@ -283,8 +246,6 @@ class TheftDetector:
             for mid, val in tfes.items()
             if val["kwh"] <= cap.get(mid, float("inf"))
         }
-
-    # ── F11 analysis ─────────────────────────────
 
     def _analyse_f11(self, energy: dict) -> list[F11Result]:
         dt_tbl  = self.top["dt"]
@@ -365,17 +326,9 @@ class TheftDetector:
 
         return results
 
-    # ── F33 analysis ─────────────────────────────
-
     def _analyse_f33(self, energy: dict, f11_results: list[F11Result]) -> list[F33Result]:
-        """
-        F33 loss = F33 input meter − sum of F11 input meters on that F33.
-        Uses directly measured F11 input kWh (not DT-corrected estimates),
-        because F11 meters are the downstream boundary of the F33 segment.
-        """
         f33_tbl = self.top["f33"]
 
-        # Build lookup: f33_id → list of F11Results
         f11_by_f33: dict[int, list[F11Result]] = {}
         for r in f11_results:
             if r.f33_id is not None:
@@ -384,18 +337,15 @@ class TheftDetector:
         results = []
 
         for _, f33_row in f33_tbl.iterrows():
-            f33_id  = int(f33_row["Id"])
-            f33_mid = int(f33_row["MeterId"])
+            f33_id    = int(f33_row["Id"])
+            f33_mid   = int(f33_row["MeterId"])
             input_kwh = energy.get(f33_mid, 0.0)
 
             downstream = f11_by_f33.get(f33_id, [])
-            n_total = len(downstream)
-
-            # Only count F11s that have a valid input meter reading
-            measured = [r for r in downstream if r.input_kwh >= MIN_KWH_FEEDER]
-            n_ok = len(measured)
-            coverage = n_ok / n_total if n_total > 0 else 0.0
-
+            n_total    = len(downstream)
+            measured   = [r for r in downstream if r.input_kwh >= MIN_KWH_FEEDER]
+            n_ok       = len(measured)
+            coverage   = n_ok / n_total if n_total > 0 else 0.0
             output_sum = sum(r.input_kwh for r in measured)
 
             if input_kwh < MIN_KWH_FEEDER:
@@ -434,25 +384,14 @@ class TheftDetector:
 
         return results
 
-    # ── Main entry point ─────────────────────────
-
     def analyse(self, hours: int = ANALYSIS_HOURS) -> TheftReport:
-        mids = self._all_meter_ids()
-
-        print(f"\nFetching TFES data for {len(mids)} meters ({hours}h window)...")
-        tfes = _tfes_delta(mids, hours)
-        print(f"  → {len(tfes)} meters with valid TFES data.")
-
+        mids   = self._all_meter_ids()
+        tfes   = _tfes_delta(mids, hours)
         energy = self._build_energy(tfes, float(hours))
-        print(f"  → {sum(1 for v in energy.values() if v > 0)} meters with kWh > 0 (after cap filter).")
 
-        print("\nAnalysing F11 feeders...")
         f11_results = self._analyse_f11(energy)
-
-        print("Analysing F33 feeders...")
         f33_results = self._analyse_f33(energy, f11_results)
 
-        # ── F11 DataFrame ──
         f11_df = pd.DataFrame([{
             "f11_id":         r.f11_id,
             "feeder_name":    r.name,
@@ -469,7 +408,6 @@ class TheftDetector:
             "confidence":     r.confidence,
         } for r in f11_results]).sort_values("loss_kwh", ascending=False).reset_index(drop=True)
 
-        # ── F33 DataFrame ──
         f33_df = pd.DataFrame([{
             "f33_id":         r.f33_id,
             "feeder_name":    r.name,
@@ -484,7 +422,6 @@ class TheftDetector:
             "confidence":     r.confidence,
         } for r in f33_results]).sort_values("loss_kwh", ascending=False).reset_index(drop=True)
 
-        # ── Suspicious DTs (only from NTL F11 feeders) ──
         suspicious_rows = [
             {
                 "feeder_name":   r.name,
@@ -505,7 +442,6 @@ class TheftDetector:
             if suspicious_rows else pd.DataFrame()
         )
 
-        # ── KPIs ──
         def _kpis(df):
             valid = df[df["loss_pct"].notna()]
             return (
@@ -525,7 +461,7 @@ class TheftDetector:
 
 
 # ─────────────────────────────────────────────
-# CLI
+# CLI  (prints allowed only here)
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -545,9 +481,8 @@ if __name__ == "__main__":
     print(f"  {'NTL share':30s} {_pct(rep.f11_total_ntl_kwh, rep.f11_total_input_kwh):>20}   {_pct(rep.f33_total_ntl_kwh, rep.f33_total_input_kwh):>20}")
     print("═" * 80)
 
-    # F33 results
-    print("\n=== F33 FEEDERS (33kV) ===")
     f33_valid = rep.f33_feeders[rep.f33_feeders["loss_pct"].notna()]
+    print("\n=== F33 FEEDERS (33kV) ===")
     if f33_valid.empty:
         print("No F33 feeders with sufficient data.")
     else:
@@ -557,7 +492,6 @@ if __name__ == "__main__":
             "status", "confidence"
         ]].to_string(index=False))
 
-    # F11 NTL feeders
     f11_ntl = rep.f11_feeders[rep.f11_feeders["status"].isin(NTL_STATUSES)]
     print(f"\n=== F11 NTL FEEDERS ({len(f11_ntl)}) — SUSPECTED THEFT ===")
     if f11_ntl.empty:
@@ -568,7 +502,6 @@ if __name__ == "__main__":
             "coverage", "dt_suspicious", "status", "confidence"
         ]].to_string(index=False))
 
-    # Suspicious DTs
     print(f"\n=== SUSPICIOUS DISTRIBUTION SUBSTATIONS ({len(rep.suspicious_dts)}) ===")
     print("  (Active but consuming < 2% of rated capacity — possible meter bypass)")
     if rep.suspicious_dts.empty:
