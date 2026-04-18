@@ -1,2 +1,24 @@
+# Baza / backup
 *.bacpac
+
+# Virtual env
 venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Env fajlovi (tajne, konekcije)
+.env
+*.env
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# Logs
+*.log
