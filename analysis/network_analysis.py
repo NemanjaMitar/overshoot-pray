@@ -1,12 +1,28 @@
 """
-analysis/network_analysis.py
-Analiza gubitaka u distributivnoj mreži.
-Gubici > 10% ne mogu biti tehnički — sumnja na krađu.
+analysis/theft_detection.py
+
+Detekcija nekomercijalnih (NTL) gubitaka u distributivnoj mreži.
+
+Princip:
+  - Tehnički (fizički) gubici: nastaju od otpora vodova (I²R), tipično 2–8%.
+  - Netehničke gubitke (NTL, krađa): sve što je iznad praga za dati nivo napona.
+
+Hijerarhija:
+  TransmissionStation → Feeders33 → Feeders11 → DistributionSubstation (DT) → Korisnici
+
+Pristup:
+  1. Koristi TFES registar energije (pouzdaniji od V×I) s dužim prozorom (7 dana).
+  2. Na F11 nivou: ulaz (F11 mjerač) − zbir DT mjerača = ukupni gubitak na feederu.
+  3. Gubitak > PRAG_NTL → sumnja na krađu.
+  4. Unutar svakog flagovanog F11 feeder: identifikuj DT-ove sa sumnjivo niskim
+     load factorom (potrošnja / nameplate kapacitet) — mogući bypass mjerača.
+  5. Rangiranje po apsolutnom kWh gubitku (ne samo %) — prioritizuje najveće štete.
 """
 
 import sys
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 import pandas as pd
 import numpy as np
@@ -14,419 +30,474 @@ import numpy as np
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from get_data.db import q
 
+
 # ─────────────────────────────────────────────
 # KONSTANTE
 # ─────────────────────────────────────────────
 
-SCALE       = 100.0
-COS_PHI     = 0.9
-DT_INTERVAL = 0.5   # sati između mjerenja (30 min)
+# Duži prozor = manje šuma od skaliranja, bolji coverage
+ANALYSIS_HOURS = 168          # 7 dana
 
-CID_V = {"a": 6, "b": 7, "c": 8}
-CID_I = {"a": 9, "b": 10, "c": 11}
+COS_PHI       = 0.9
+TFES_WH_TO_KWH = 1000.0
 
-# Granice gubitaka u %
-# Nova mreža (Nigerija) — niski tehnički gubici, visoki komercijalni rizik
-PRAG_NORMALNO   = 5.0   # tehnički gubici u normi za novu infrastrukturu
-PRAG_UPOZORENJE = 10.0  # iznad: sumnja na krađu (ne može biti tehničko)
-PRAG_KRITICNO   = 20.0  # kritična krađa
+# Pragovi gubitaka (%) po nivou napona
+PRAG_TECH_F11   = 8.0         # Tehnički gubici na 11kV — do 8% je normalno
+PRAG_NTL_F11    = 15.0        # Iznad 15% → NTL (krađa) na F11
+PRAG_NTL_HIGH   = 30.0        # Iznad 30% → vjerovatna krađa
+PRAG_NTL_ALARM  = 50.0        # Iznad 50% → alarm
 
-# Pokrivenost DT-ova za ekstrapolaciju
-COVERAGE_MIN  = 0.30   # ispod: NEPOZNATO (prenisko za procjenu)
-COVERAGE_FULL = 0.80   # iznad: puni pragovi (visoka pouzdanost)
+# Minimalni podaci za validan zaključak
+MIN_COVERAGE     = 0.30       # Min % DT-ova s mjerenjima za F11 analizu
+MIN_KWH_FEEDER   = 10.0       # Min kWh ulaz za F11 da bi analiza imala smisla
+MIN_TFES_HOURS   = 8.0        # Minimalnom vremenski prozor TFES mjerenja
 
-V_NORMALAN_MIN = 190.0
-V_NORMALAN_MAX = 250.0
-V_PREKID       = 10.0
+# Load factor: ako je DT troši manje od X% svog kapaciteta → sumnjivo
+LOAD_FACTOR_SUSPICIOUS = 0.02  # < 2% kapaciteta kroz 7 dana → moguć bypass
+
+MAX_SCALE_FACTOR = 3.0        # Max 3× skaliranje (7 dana → dovoljno podataka)
+
+# Fallback nameplate (kVA) ako nedostaje u bazi
+FALLBACK_KVA_DT  = 500.0
+FALLBACK_KVA_F11 = 5000.0
+FALLBACK_KVA_F33 = 40000.0
 
 
 # ─────────────────────────────────────────────
-# REZULTAT
+# TIPOVI
 # ─────────────────────────────────────────────
 
 @dataclass
-class RezultatAnalize:
-    dt:    pd.DataFrame
-    f11:   pd.DataFrame
-    f33:   pd.DataFrame
-    alarmi: pd.DataFrame
+class DtProfil:
+    dt_id:       int
+    naziv:       str
+    feeder11_id: int
+    kwh:         float          # Izmjerena potrošnja u prozoru
+    load_factor: float          # kwh / (nameplate_kva * COS_PHI * hours)
+    nameplate:   float          # kVA
+    lat:         Optional[float]
+    lon:         Optional[float]
+    sumnjiv:     bool           # Neobično nizak load factor
+
+
+@dataclass
+class FeederRezultat:
+    f11_id:      int
+    naziv:       str
+    kwh_ulaz:    float          # Energija na ulazu F11 feeder (mjerač)
+    kwh_izlaz:   float          # Suma DT potrošnje (izmjerena)
+    kwh_izlaz_est: float        # Procijenjena suma (korigovana za coverage)
+    gubitak_kwh: float          # Procijenjeni apsolutni gubitak (kWh)
+    gubitak_pct: Optional[float]
+    coverage:    float          # Udio DT-ova s validnim mjerenjima
+    n_dt:        int
+    n_dt_ok:     int
+    n_dt_sumnjiv: int           # DT-ovi sa sumnjivim load faktorom
+    status:      str            # NORMALNO / UPOZORENJE / NTL / NTL_ALARM
+    pouzdanost:  str            # VISOKA / SREDNJA / NISKA
+    f33_id:      Optional[int]
+    dt_profili:  list           # Lista DtProfil za ovaj feeder
+
+
+@dataclass
+class IzveštajKradje:
+    feederi:     pd.DataFrame   # Rangirani po gubitak_kwh desc
+    sumnjivi_dt: pd.DataFrame   # DT-ovi s niskim load factorom
+    ukupno_kwh_ulaz:   float
+    ukupno_kwh_gubitak: float
+    ukupno_ntl_kwh:    float    # Procijenjeni NTL (>prag)
 
 
 # ─────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────
 
-def chunk(lst, size=1000):
+def chunk(lst, size=500):
     for i in range(0, len(lst), size):
         yield lst[i:i + size]
 
 
-_V_CIDS = set(CID_V.values())   # {6, 7, 8}
-_I_CIDS = set(CID_I.values())   # {9, 10, 11}
-_VI_CIDS = _V_CIDS | _I_CIDS
-
-
-def _energy_all(df: pd.DataFrame) -> dict:
-    """Vektorizovano: kWh i prosječni napon za sve Mid-ove odjednom."""
-    if df.empty:
+def _tfes_delta(meter_ids: list, hours: int) -> dict:
+    """
+    Vraća {mid: kwh} koristeći MAX-MIN delta TFES registra.
+    Prozor: poslednjih `hours` sati od MAX(Ts) svakog mjerača.
+    Odbacuje kratke prozore i nerealno visoke vrijednosti.
+    """
+    if not meter_ids:
         return {}
+    result = {}
 
-    sub = df[df["Cid"].isin(_VI_CIDS)]
-    if sub.empty:
-        return {}
+    for part in chunk(meter_ids):
+        ids = ",".join(map(str, part))
+        df = q(f"""
+            WITH last AS (
+                SELECT Mid, MAX(Ts) AS last_ts
+                FROM MeterReadTfes
+                WHERE Mid IN ({ids})
+                GROUP BY Mid
+            ),
+            win AS (
+                SELECT t.Mid,
+                       MIN(t.Ts)  AS min_ts,
+                       MAX(t.Ts)  AS max_ts,
+                       COUNT(*)   AS n_readings,
+                       MAX(CAST(t.Val AS FLOAT)) - MIN(CAST(t.Val AS FLOAT)) AS delta_wh
+                FROM MeterReadTfes t
+                JOIN last l ON t.Mid = l.Mid
+                WHERE t.Ts > DATEADD(HOUR, -{hours}, l.last_ts)
+                GROUP BY t.Mid
+            )
+            SELECT Mid, delta_wh, min_ts, max_ts, n_readings
+            FROM win
+            WHERE delta_wh IS NOT NULL AND delta_wh > 0
+        """)
 
-    pivot = sub.pivot_table(
-        index=["Mid", "Ts"], columns="Cid", values="Val", aggfunc="mean"
-    )
+        for _, row in df.iterrows():
+            mid = int(row["Mid"])
+            delta_wh = float(row["delta_wh"])
+            min_ts, max_ts = row["min_ts"], row["max_ts"]
 
-    kwh = pd.Series(0.0, index=pivot.index.get_level_values("Mid").unique())
-    for ph in ("a", "b", "c"):
-        cv, ci = CID_V[ph], CID_I[ph]
-        if cv in pivot.columns and ci in pivot.columns:
-            p = (pivot[cv] / SCALE) * (pivot[ci] / SCALE) * COS_PHI / 1000.0
-            kwh = kwh.add(p.groupby(level="Mid").sum() * DT_INTERVAL, fill_value=0.0)
-    kwh = kwh.clip(lower=0)
+            if pd.isna(min_ts) or pd.isna(max_ts):
+                continue
 
-    v_df = df[df["Cid"].isin(_V_CIDS)].copy()
-    v_df = v_df.assign(v=v_df["Val"] / SCALE)
-    v_df = v_df[(v_df["v"] >= V_PREKID) & (v_df["v"] <= 350)]
-    v_avg = v_df.groupby("Mid")["v"].mean()
+            real_hours = max(
+                (max_ts - min_ts).total_seconds() / 3600.0,
+                0.5
+            )
 
-    result: dict = {}
-    for mid in kwh.index:
-        result[int(mid)] = {
-            "kwh": float(kwh[mid]),
-            "v":   float(v_avg[mid]) if mid in v_avg.index else None,
-        }
-    for mid in v_avg.index:
-        if int(mid) not in result:
-            result[int(mid)] = {"kwh": 0.0, "v": float(v_avg[mid])}
+            # Odbaci prekratke prozore
+            if real_hours < MIN_TFES_HOURS:
+                continue
+
+            # Skaliraj na traženi period, ali ne previše agresivno
+            factor = min(hours / real_hours, MAX_SCALE_FACTOR)
+            kwh = (delta_wh / TFES_WH_TO_KWH) * factor
+
+            result[mid] = {
+                "kwh":        kwh,
+                "real_hours": real_hours,
+                "n_readings": int(row["n_readings"]),
+            }
+
     return result
 
 
-def _loss(ulaz: float, izlaz: float):
-    """Gubici u % = (ulaz - izlaz) / ulaz * 100."""
-    if ulaz <= 0:
-        return None
-    return round((ulaz - izlaz) / ulaz * 100, 2)
-
-
-# ─────────────────────────────────────────────
-# KLASIFIKACIJA
-# ─────────────────────────────────────────────
-
-def classify(gubitak_pct, napon, kwh_ulaz, kwh_izlaz):
+def _klasifikuj(gubitak_pct: Optional[float], coverage: float) -> tuple[str, str]:
     """
-    Klasifikuj stanje voda na osnovu gubitaka.
-    Iznad 10% gubici ne mogu biti tehnički — sumnja na krađu.
+    Vraća (status, pouzdanost).
     """
+    if coverage >= 0.80:
+        pouzd = "VISOKA"
+    elif coverage >= 0.50:
+        pouzd = "SREDNJA"
+    else:
+        pouzd = "NISKA"
+
     if gubitak_pct is None:
-        return dict(status="NEPOZNATO", tip="Nema podataka", boja="#888888")
-
-    if napon is not None and napon < V_PREKID and kwh_izlaz < 0.001:
-        return dict(status="ALARM", tip="Prekid napajanja", boja="#000000")
+        return "NEPOZNATO", pouzd
 
     if gubitak_pct < 0:
-        return dict(status="UPOZORENJE", tip="Negativni gubici — greška mjerenja", boja="#888888")
+        return "GREŠKA_MJERENJA", pouzd
 
-    if gubitak_pct < PRAG_NORMALNO:
-        return dict(status="NORMALNO", tip="Tehnički gubici u normi", boja="#1D9E75")
+    if gubitak_pct < PRAG_TECH_F11:
+        return "NORMALNO", pouzd
 
-    if gubitak_pct < PRAG_UPOZORENJE:
-        return dict(status="UPOZORENJE", tip="Povišeni gubici — provjeri", boja="#EF9F27")
+    if gubitak_pct < PRAG_NTL_F11:
+        return "UPOZORENJE", pouzd
 
-    if gubitak_pct < PRAG_KRITICNO:
-        if napon is not None and napon < V_NORMALAN_MIN:
-            return dict(status="KRITIČNO", tip="Oštećenje voda (nizak napon)", boja="#D85A30")
-        return dict(status="KRITIČNO", tip="Sumnja na krađu struje", boja="#D85A30")
+    if gubitak_pct < PRAG_NTL_HIGH:
+        return "NTL", pouzd          # Non-Technical Loss — sumnja na krađu
 
-    return dict(status="ALARM", tip="Kritična krađa struje", boja="#A32D2D")
+    if gubitak_pct < PRAG_NTL_ALARM:
+        return "NTL_VISOKO", pouzd
+
+    return "NTL_ALARM", pouzd
 
 
 # ─────────────────────────────────────────────
-# MAIN CLASS
+# GLAVNI ANALIZATOR
 # ─────────────────────────────────────────────
 
-class NetworkAnalysis:
+class TheftDetector:
 
     def __init__(self):
+        print("Učitavam topologiju mreže...")
         self.top = self._load_topology()
+        print(f"  F33: {len(self.top['f33'])} feedera")
+        print(f"  F11: {len(self.top['f11'])} feedera")
+        print(f"  DT:  {len(self.top['dt'])} podstanica")
 
-    def _load_topology(self):
+    def _load_topology(self) -> dict:
         return {
-            "dt":  q("SELECT Id, Name, MeterId, Feeder11Id, Feeder33Id FROM DistributionSubstation WHERE MeterId IS NOT NULL"),
-            "f11": q("SELECT Id, Name, MeterId, SsId, Feeder33Id FROM Feeders11 WHERE MeterId IS NOT NULL"),
-            "f33": q("SELECT Id, Name, MeterId, TsId FROM Feeders33 WHERE MeterId IS NOT NULL"),
-            "ss":  q("SELECT Id, Name FROM Substations"),
-            "ts":  q("SELECT Id, Name FROM TransmissionStations"),
+            "f33": q("""
+                SELECT Id, Name, MeterId, TsId,
+                       ISNULL(NameplateRating, 0) AS NameplateRating
+                FROM Feeders33
+                WHERE MeterId IS NOT NULL
+            """),
+            "f11": q("""
+                SELECT Id, Name, MeterId, Feeder33Id,
+                       ISNULL(NameplateRating, 0) AS NameplateRating
+                FROM Feeders11
+                WHERE MeterId IS NOT NULL
+            """),
+            "dt": q("""
+                SELECT Id, Name, MeterId, Feeder11Id,
+                       ISNULL(NameplateRating, 0) AS NameplateRating,
+                       Latitude, Longitude
+                FROM DistributionSubstation
+                WHERE MeterId IS NOT NULL
+            """),
         }
 
-    # ─────────────────────────────
-    # UČITAJ MJERENJA
-    # ─────────────────────────────
+    def _svi_mid(self) -> list:
+        mids = []
+        for tbl in self.top.values():
+            if "MeterId" in tbl.columns:
+                mids += tbl["MeterId"].dropna().astype(int).tolist()
+        return list(set(mids))
 
-    def _load_measurements(self, meter_ids, hours):
-        if not meter_ids:
-            return pd.DataFrame()
+    def _nameplate_kwh(self, kva: float, hours: float) -> float:
+        """Maksimalni razumni kWh za dati kVA i period."""
+        if kva <= 0:
+            return float("inf")
+        return kva * COS_PHI * hours
 
-        # Koristimo MAX(Ts) kao referentu tačku — podaci možda nisu "live"
-        ref = q("SELECT MAX(Ts) as t FROM MeterReads").iloc[0]["t"]
-        print(f"  Referentno vrijeme: {ref}")
+    def analiziraj(self, hours: int = ANALYSIS_HOURS) -> IzveštajKradje:
+        mids = self._svi_mid()
+        print(f"\nDohvatam TFES podatke za {len(mids)} mjerača ({hours}h prozor)...")
+        tfes = _tfes_delta(mids, hours)
+        print(f"  → {len(tfes)} mjerača s validnim TFES podacima.")
 
-        dfs = []
-        for part in chunk(list(set(meter_ids)), 200):
-            ids = ",".join(map(str, part))
-            dfs.append(q(f"""
-                SELECT Mid, Cid, Val, Ts
-                FROM MeterReads
-                WHERE Mid IN ({ids})
-                  AND Ts > DATEADD(HOUR, -{hours}, '{ref}')
-            """))
+        # Nameplate cap mapa
+        cap: dict[int, float] = {}
+        for level, fallback_kva in [("dt", FALLBACK_KVA_DT), ("f11", FALLBACK_KVA_F11), ("f33", FALLBACK_KVA_F33)]:
+            for _, row in self.top[level].iterrows():
+                mid = int(row["MeterId"])
+                kva = float(row["NameplateRating"]) if row["NameplateRating"] > 0 else fallback_kva
+                max_kwh = self._nameplate_kwh(kva, hours)
+                if mid not in cap or max_kwh < cap[mid]:
+                    cap[mid] = max_kwh
 
-        return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+        # Filtriraj nerealne vrijednosti
+        energy: dict[int, float] = {}
+        for mid, val in tfes.items():
+            kwh = val["kwh"]
+            if kwh <= cap.get(mid, float("inf")):
+                energy[mid] = kwh
 
-    # ─────────────────────────────
-    # DT — status napona
-    # ─────────────────────────────
+        print(f"  → {sum(1 for k in energy if energy[k] > 0)} mjerača s kWh > 0 (nakon cap filtera).")
 
-    def _dt(self, e: dict):
-        dt = self.top["dt"]
+        # ── Analiza po F11 feederu ──
+        print("\nAnaliziram gubitke po F11 feederima...")
 
-        res = []
-        for _, r in dt.iterrows():
-            mid = int(r["MeterId"])
-            x = e.get(mid, {"kwh": 0, "v": None})
-            v = x["v"]
+        dt_tbl = self.top["dt"]
+        f11_tbl = self.top["f11"]
 
-            if v is None:
-                status, tip, boja = "NEPOZNATO", "Nema mjerenja", "#888888"
-            elif v < V_PREKID:
-                status, tip, boja = "ALARM", "Prekid napajanja", "#000000"
-            elif v < V_NORMALAN_MIN:
-                status, tip, boja = "UPOZORENJE", "Nizak napon", "#EF9F27"
-            else:
-                status, tip, boja = "NORMALNO", "OK", "#1D9E75"
+        rezultati: list[FeederRezultat] = []
 
-            res.append({
-                "dt_id":     r["Id"],
-                "naziv":     r["Name"],
-                "feeder11":  r["Feeder11Id"],
-                "kwh":       x["kwh"],
-                "v":         v,
-                "status":    status,
-                "tip":       tip,
-                "boja":      boja,
-            })
+        for _, f11_row in f11_tbl.iterrows():
+            f11_id  = int(f11_row["Id"])
+            f11_mid = int(f11_row["MeterId"])
+            f11_kva = float(f11_row["NameplateRating"]) if f11_row["NameplateRating"] > 0 else FALLBACK_KVA_F11
 
-        return pd.DataFrame(res)
+            kwh_ulaz = energy.get(f11_mid, 0.0)
 
-    # ─────────────────────────────
-    # F11 — gubici po 11kV vodu
-    # Ulaz:  F11 mjerač na izlazu iz SS
-    # Izlaz: suma svih DT-ova na tom vodu
-    # ─────────────────────────────
+            # Svi DT-ovi na ovom F11 feederu
+            dts = dt_tbl[dt_tbl["Feeder11Id"] == f11_id]
 
-    def _f11(self, e: dict, dt):
-        f11 = self.top["f11"]
+            dt_profili: list[DtProfil] = []
+            kwh_izlaz_sum = 0.0
+            n_ok = 0
 
-        # Pokrivenost: koliko DT-ova ima mjerenja vs ukupno
-        dt_top = self.top["dt"][["Id", "Feeder11Id"]].copy()
-        dt_top = dt_top.merge(
-            dt[["dt_id", "kwh"]].rename(columns={"dt_id": "Id"}),
-            on="Id", how="left"
-        )
-        dt_top["izmjereno"] = (dt_top["kwh"].fillna(0) > 0).astype(int)
+            for _, dt_row in dts.iterrows():
+                dt_mid = int(dt_row["MeterId"])
+                dt_kva = float(dt_row["NameplateRating"]) if dt_row["NameplateRating"] > 0 else FALLBACK_KVA_DT
+                dt_kwh = energy.get(dt_mid, 0.0)
 
-        dt_ukupno  = dt_top.groupby("Feeder11Id")["Id"].count()
-        dt_izmjer  = dt_top.groupby("Feeder11Id")["izmjereno"].sum()
-        dt_kwh_sum = dt_top.groupby("Feeder11Id")["kwh"].sum()
+                # Load factor: koliko % kapaciteta DT je iskorišćeno
+                max_dt_kwh = self._nameplate_kwh(dt_kva, hours)
+                load_factor = dt_kwh / max_dt_kwh if max_dt_kwh > 0 else 0.0
 
-        res = []
-        for _, r in f11.iterrows():
-            f11_id = r["Id"]
-            f11_mid = int(r["MeterId"])
+                sumnjiv = (
+                    dt_mid in energy          # Mjerač radi
+                    and dt_kwh < max_dt_kwh * LOAD_FACTOR_SUSPICIOUS
+                    and dt_kwh > 0            # Nije offline — troši, ali premalo
+                )
 
-            ulaz = e.get(f11_mid, {"kwh": 0, "v": None})
-            kwh_u = ulaz["kwh"]
+                has_data = dt_mid in energy and dt_kwh > 0
 
-            kwh_i     = float(dt_kwh_sum.get(f11_id, 0.0))
-            n_ukupno  = int(dt_ukupno.get(f11_id, 0))
-            n_izmjer  = int(dt_izmjer.get(f11_id, 0))
+                if has_data:
+                    kwh_izlaz_sum += dt_kwh
+                    n_ok += 1
 
-            coverage = n_izmjer / n_ukupno if n_ukupno > 0 else 0.0
+                dt_profili.append(DtProfil(
+                    dt_id       = int(dt_row["Id"]),
+                    naziv       = dt_row["Name"],
+                    feeder11_id = f11_id,
+                    kwh         = dt_kwh,
+                    load_factor = round(load_factor, 4),
+                    nameplate   = dt_kva,
+                    lat         = dt_row.get("Latitude"),
+                    lon         = dt_row.get("Longitude"),
+                    sumnjiv     = sumnjiv,
+                ))
 
-            if n_izmjer == 0 or coverage < COVERAGE_MIN:
-                res.append({
-                    "f11_id": f11_id, "naziv": r["Name"],
-                    "kwh_u": round(kwh_u, 2), "kwh_i": 0.0,
-                    "loss": None, "n_dt": n_ukupno, "n_dt_ok": n_izmjer,
-                    "status": "NEPOZNATO",
-                    "tip": f"Premalo podataka: {n_izmjer}/{n_ukupno} DT",
-                    "boja": "#888888",
-                })
+            n_total = len(dts)
+            coverage = n_ok / n_total if n_total > 0 else 0.0
+
+            # Preskočiti feedere bez dovoljno podataka
+            if kwh_ulaz < MIN_KWH_FEEDER:
+                rezultati.append(FeederRezultat(
+                    f11_id=f11_id, naziv=f11_row["Name"],
+                    kwh_ulaz=kwh_ulaz, kwh_izlaz=kwh_izlaz_sum,
+                    kwh_izlaz_est=0.0, gubitak_kwh=0.0, gubitak_pct=None,
+                    coverage=coverage, n_dt=n_total, n_dt_ok=n_ok,
+                    n_dt_sumnjiv=sum(1 for d in dt_profili if d.sumnjiv),
+                    status="NEVALIDAN_ULAZ", pouzdanost="NISKA",
+                    f33_id=int(f11_row["Feeder33Id"]) if pd.notna(f11_row.get("Feeder33Id")) else None,
+                    dt_profili=dt_profili,
+                ))
                 continue
 
-            # Ekstrapolacija: skaliramo izmjereni izlaz na cijeli vod
-            kwh_i_est = kwh_i / coverage
-            gubitak = _loss(kwh_u, kwh_i_est)
+            if coverage < MIN_COVERAGE:
+                rezultati.append(FeederRezultat(
+                    f11_id=f11_id, naziv=f11_row["Name"],
+                    kwh_ulaz=kwh_ulaz, kwh_izlaz=kwh_izlaz_sum,
+                    kwh_izlaz_est=0.0, gubitak_kwh=0.0, gubitak_pct=None,
+                    coverage=coverage, n_dt=n_total, n_dt_ok=n_ok,
+                    n_dt_sumnjiv=sum(1 for d in dt_profili if d.sumnjiv),
+                    status="NEDOVOLJNO_PODATAKA", pouzdanost="NISKA",
+                    f33_id=int(f11_row["Feeder33Id"]) if pd.notna(f11_row.get("Feeder33Id")) else None,
+                    dt_profili=dt_profili,
+                ))
+                continue
 
-            if coverage < COVERAGE_FULL:
-                # Djelimična pokrivenost — procjena, pragovi uvećani 1.5×
-                if gubitak is None:
-                    c = dict(status="NEPOZNATO", tip="Nema ulaznih podataka", boja="#888888")
-                elif gubitak < 0:
-                    c = dict(status="UPOZORENJE", tip=f"Negativni gubici — greška mjerenja (procj. {n_izmjer}/{n_ukupno})", boja="#888888")
-                elif gubitak < PRAG_NORMALNO:
-                    c = dict(status="NORMALNO", tip=f"Tehnički gubici — procjena {n_izmjer}/{n_ukupno} DT", boja="#1D9E75")
-                elif gubitak < PRAG_UPOZORENJE * 1.5:
-                    c = dict(status="UPOZORENJE", tip=f"Povišeni gubici — procjena {n_izmjer}/{n_ukupno} DT", boja="#EF9F27")
-                elif gubitak < PRAG_KRITICNO * 1.5:
-                    c = dict(status="KRITIČNO", tip=f"Sumnja na krađu — procjena {n_izmjer}/{n_ukupno} DT", boja="#D85A30")
-                else:
-                    c = dict(status="ALARM", tip=f"Kritična krađa — procjena {n_izmjer}/{n_ukupno} DT", boja="#A32D2D")
-            else:
-                c = classify(gubitak, ulaz["v"], kwh_u, kwh_i_est)
+            # Procijeni ukupni izlaz korigovanjem za coverage
+            # (pretpostavka: DT-ovi bez podataka troše slično kao oni s podacima)
+            kwh_izlaz_est = kwh_izlaz_sum / coverage if coverage > 0 else 0.0
 
-            kwh_i = kwh_i_est  # dalje koristimo procijenjenu vrijednost
+            gubitak_kwh = max(kwh_ulaz - kwh_izlaz_est, 0.0)
+            gubitak_pct = round((kwh_ulaz - kwh_izlaz_est) / kwh_ulaz * 100, 2) if kwh_ulaz > 0 else None
 
-            res.append({
-                "f11_id":  f11_id,
-                "naziv":   r["Name"],
-                "kwh_u":   round(kwh_u, 2),
-                "kwh_i":   round(kwh_i, 2),
-                "loss":    gubitak,
-                "n_dt":    n_ukupno,
-                "n_dt_ok": n_izmjer,
-                **c,
-            })
+            status, pouzdanost = _klasifikuj(gubitak_pct, coverage)
 
-        return pd.DataFrame(res)
+            rezultati.append(FeederRezultat(
+                f11_id=f11_id, naziv=f11_row["Name"],
+                kwh_ulaz=round(kwh_ulaz, 1),
+                kwh_izlaz=round(kwh_izlaz_sum, 1),
+                kwh_izlaz_est=round(kwh_izlaz_est, 1),
+                gubitak_kwh=round(gubitak_kwh, 1),
+                gubitak_pct=gubitak_pct,
+                coverage=round(coverage, 3),
+                n_dt=n_total, n_dt_ok=n_ok,
+                n_dt_sumnjiv=sum(1 for d in dt_profili if d.sumnjiv),
+                status=status, pouzdanost=pouzdanost,
+                f33_id=int(f11_row["Feeder33Id"]) if pd.notna(f11_row.get("Feeder33Id")) else None,
+                dt_profili=dt_profili,
+            ))
 
-    # ─────────────────────────────
-    # F33 — gubici po 33kV vodu
-    # Ulaz:  F33 mjerač
-    # Izlaz: suma F11 mjerača koji idu s tog F33
-    # ─────────────────────────────
+        # ── Agregacija u DataFrame ──
+        feederi_df = pd.DataFrame([{
+            "f11_id":        r.f11_id,
+            "naziv":         r.naziv,
+            "f33_id":        r.f33_id,
+            "kwh_ulaz":      r.kwh_ulaz,
+            "kwh_izlaz_est": r.kwh_izlaz_est,
+            "gubitak_kwh":   r.gubitak_kwh,
+            "gubitak_pct":   r.gubitak_pct,
+            "coverage":      r.coverage,
+            "n_dt":          r.n_dt,
+            "n_dt_ok":       r.n_dt_ok,
+            "n_dt_sumnjiv":  r.n_dt_sumnjiv,
+            "status":        r.status,
+            "pouzdanost":    r.pouzdanost,
+        } for r in rezultati])
 
-    def _f33(self, e: dict, f11):
-        f33 = self.top["f33"]
+        # Rangiraj po apsolutnom gubitku (najvažnija metrika za prioritizaciju)
+        feederi_df = feederi_df.sort_values("gubitak_kwh", ascending=False).reset_index(drop=True)
 
-        # f11_id → Feeder33Id, pa suma kwh_u po f33
-        # Povežemo s topologijom da dobijemo Feeder33Id
-        f11_top = self.top["f11"][["Id", "Feeder33Id"]].copy()
-        f11_top.columns = ["f11_id", "feeder33_id"]
-        f11_merged = f11.merge(f11_top, on="f11_id", how="left")
-        f11_sum_by_f33 = f11_merged.groupby("feeder33_id")["kwh_u"].sum()
+        # ── Sumnjivi DT-ovi ──
+        sumnjivi_dts = []
+        for r in rezultati:
+            if r.status in ("NTL", "NTL_VISOKO", "NTL_ALARM"):
+                for dt in r.dt_profili:
+                    if dt.sumnjiv:
+                        sumnjivi_dts.append({
+                            "feeder":      r.naziv,
+                            "f11_id":      r.f11_id,
+                            "dt_naziv":    dt.naziv,
+                            "dt_id":       dt.dt_id,
+                            "kwh_7d":      round(dt.kwh, 1),
+                            "load_factor": dt.load_factor,
+                            "nameplate_kva": dt.nameplate,
+                            "lat":         dt.lat,
+                            "lon":         dt.lon,
+                        })
 
-        res = []
-        for _, r in f33.iterrows():
-            f33_id = r["Id"]
-            f33_mid = int(r["MeterId"])
+        sumnjivi_df = pd.DataFrame(sumnjivi_dts).sort_values("load_factor") if sumnjivi_dts else pd.DataFrame()
 
-            ulaz = e.get(f33_mid, {"kwh": 0, "v": None})
-            kwh_u = ulaz["kwh"]
+        # ── Sumarni KPI ──
+        validni = feederi_df[feederi_df["gubitak_pct"].notna()]
+        ukupno_ulaz    = float(validni["kwh_ulaz"].sum())
+        ukupno_gubitak = float(validni["gubitak_kwh"].sum())
 
-            # Suma F11 ulaza koji idu s ovog F33
-            kwh_i = float(f11_sum_by_f33.get(f33_id, 0.0))
+        ntl_mask = validni["status"].isin(["NTL", "NTL_VISOKO", "NTL_ALARM"])
+        ntl_kwh  = float(validni.loc[ntl_mask, "gubitak_kwh"].sum())
 
-            gubitak = _loss(kwh_u, kwh_i)
-            c = classify(gubitak, ulaz["v"], kwh_u, kwh_i)
-
-            res.append({
-                "f33_id": f33_id,
-                "naziv":  r["Name"],
-                "kwh_u":  round(kwh_u, 2),
-                "kwh_i":  round(kwh_i, 2),
-                "loss":   gubitak,
-                **c,
-            })
-
-        return pd.DataFrame(res)
-
-    # ─────────────────────────────
-    # POKRETANJE ANALIZE
-    # ─────────────────────────────
-
-    def analiziraj(self, hours=24):
-        mids = []
-        for k in self.top:
-            if "MeterId" in self.top[k].columns:
-                mids += self.top[k]["MeterId"].dropna().astype(int).tolist()
-        mids = list(set(mids))
-
-        print(f"Učitavam mjerenja za {len(mids)} brojača ({hours}h)...")
-        df = self._load_measurements(mids, hours)
-        print(f"  → {len(df)} redova učitano.")
-
-        print("Računam energiju po brojaču...")
-        e = _energy_all(df)
-        print(f"  → {len(e)} brojača s podacima.")
-
-        print("Analiziram DT-ove...")
-        dt = self._dt(e)
-
-        print("Analiziram F11 vodove (11kV)...")
-        f11 = self._f11(e, dt)
-
-        print("Analiziram F33 vodove (33kV)...")
-        f33 = self._f33(e, f11)
-
-        alarmi = pd.concat([
-            f11[f11["status"].isin(["KRITIČNO", "ALARM"])].assign(nivo="F11"),
-            f33[f33["status"].isin(["KRITIČNO", "ALARM"])].assign(nivo="F33"),
-        ], ignore_index=True)
-
-        return RezultatAnalize(dt, f11, f33, alarmi)
+        return IzveštajKradje(
+            feederi=feederi_df,
+            sumnjivi_dt=sumnjivi_df,
+            ukupno_kwh_ulaz=ukupno_ulaz,
+            ukupno_kwh_gubitak=ukupno_gubitak,
+            ukupno_ntl_kwh=ntl_kwh,
+        )
 
 
-# ─────────────────────────────
+# ─────────────────────────────────────────────
 # CLI
-# ─────────────────────────────
+# ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    na = NetworkAnalysis()
+    td = TheftDetector()
+    izv = td.analiziraj(hours=ANALYSIS_HOURS)
 
-    # ── Dijagnostika: koje CID-ove imaju F11 i DT mjerači? ──
-    ref = q("SELECT MAX(Ts) as t FROM MeterReads").iloc[0]["t"]
+    print("\n" + "═" * 80)
+    print("  IZVJEŠTAJ O GUBICIMA I KRAĐI STRUJE")
+    print("═" * 80)
+    print(f"  Ukupno ulazna energija (validni feederi): {izv.ukupno_kwh_ulaz:,.0f} kWh")
+    print(f"  Ukupno procijenjeni gubici:               {izv.ukupno_kwh_gubitak:,.0f} kWh")
+    print(f"  Od toga NTL (sumnja na krađu):            {izv.ukupno_ntl_kwh:,.0f} kWh")
+    if izv.ukupno_kwh_ulaz > 0:
+        print(f"  NTL udio od ukupnog ulaza:                {izv.ukupno_ntl_kwh / izv.ukupno_kwh_ulaz * 100:.1f}%")
+    print("═" * 80)
 
-    def _diag(mids, label):
-        print(f"\n=== DIJAGNOSTIKA {label} ===")
-        ids = ",".join(map(str, mids[:50]))
-        d = q(f"""
-            SELECT Mid, Cid, COUNT(*) as n, AVG(CAST(Val AS FLOAT)) as avg_val
-            FROM MeterReads
-            WHERE Mid IN ({ids})
-              AND Ts > DATEADD(HOUR, -24, '{ref}')
-            GROUP BY Mid, Cid
-            ORDER BY Mid, Cid
-        """)
-        if d.empty:
-            print("  UPOZORENJE: Nema podataka!")
-            return
-        # Pivot: za svaki Mid prikaži koje CID-ove ima
-        cid_by_mid = d.groupby("Mid")["Cid"].apply(set)
-        missing_i = [mid for mid, cids in cid_by_mid.items() if not {9,10,11} & cids]
-        has_both  = [mid for mid, cids in cid_by_mid.items() if {9,10,11} & cids and {6,7,8} & cids]
-        print(f"  Ima V+I (može računati kWh): {len(has_both)} mjerača")
-        print(f"  Nema struje (CID 9/10/11):   {len(missing_i)} mjerača — {missing_i}")
-        print(d[["Mid","Cid","n","avg_val"]].to_string(index=False))
+    # Top 20 feedera po gubitku
+    print("\n=== TOP 20 FEEDERA PO PROCIJENJENOM GUBITKU ===")
+    top20 = izv.feederi[izv.feederi["gubitak_pct"].notna()].head(20)
+    print(top20[[
+        "naziv", "kwh_ulaz", "kwh_izlaz_est", "gubitak_kwh",
+        "gubitak_pct", "coverage", "n_dt", "n_dt_ok", "n_dt_sumnjiv",
+        "status", "pouzdanost"
+    ]].to_string(index=False))
 
-    f11_mids = na.top["f11"]["MeterId"].dropna().astype(int).tolist()
-    dt_mids  = na.top["dt"]["MeterId"].dropna().astype(int).tolist()
-    _diag(f11_mids, "F11 MJERAČA")
-    _diag(dt_mids,  "DT MJERAČA")
-    print()
-
-    r = na.analiziraj(24)
-
-    print("\n=== F11 GUBICI ===")
-    print(r.f11[["naziv", "kwh_u", "kwh_i", "loss", "n_dt", "n_dt_ok", "status", "tip"]].to_string(index=False))
-
-    print("\n=== F33 GUBICI ===")
-    print(r.f33[["naziv", "kwh_u", "kwh_i", "loss", "status", "tip"]].to_string(index=False))
-
-    print(f"\n=== ALARMI ({len(r.alarmi)}) ===")
-    if r.alarmi.empty:
-        print("Nema alarma.")
+    # NTL feederi
+    ntl = izv.feederi[izv.feederi["status"].isin(["NTL", "NTL_VISOKO", "NTL_ALARM"])]
+    print(f"\n=== NTL FEEDERI ({len(ntl)}) — SUMNJA NA KRAĐU ===")
+    if ntl.empty:
+        print("Nema detektovanih NTL feedera s dovoljno podataka.")
     else:
-        print(r.alarmi[["nivo", "naziv", "loss", "status", "tip"]].to_string(index=False))
+        print(ntl[[
+            "naziv", "gubitak_kwh", "gubitak_pct",
+            "coverage", "n_dt_sumnjiv", "status", "pouzdanost"
+        ]].to_string(index=False))
+
+    # Sumnjivi DT-ovi
+    print(f"\n=== SUMNJIVE NISKONAPONSKE PODSTANICE ({len(izv.sumnjivi_dt)}) ===")
+    print("  (Aktivne, ali troše < 2% kapaciteta — mogući bypass mjerača)")
+    if izv.sumnjivi_dt.empty:
+        print("  Nema.")
+    else:
+        print(izv.sumnjivi_dt[[
+            "feeder", "dt_naziv", "kwh_7d", "load_factor", "nameplate_kva", "lat", "lon"
+        ]].to_string(index=False))
