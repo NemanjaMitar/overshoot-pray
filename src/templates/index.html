@@ -24,7 +24,6 @@
       border: 1px solid #e5e7eb;
     }
 
-    /* Legenda */
     .legend {
       padding: 10px 12px;
       background: white;
@@ -33,11 +32,11 @@
       box-shadow: 0 0 15px rgba(0,0,0,0.2);
       font-size: 13px;
     }
+
     .legend b {
       font-size: 13px;
     }
 
-    
     .legend i {
       width: 14px;
       height: 14px;
@@ -49,7 +48,6 @@
       border: 1px solid #fff;
     }
 
-    /* Toggle kontrola */
     .layer-toggle {
       padding: 10px 12px;
       background: white;
@@ -58,6 +56,7 @@
       font-size: 13px;
       line-height: 1.8;
     }
+
     .layer-toggle label {
       cursor: pointer;
       display: flex;
@@ -65,7 +64,6 @@
       gap: 6px;
     }
 
-    /* Modal */
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -112,7 +110,6 @@
 <body>
   <div id="map"></div>
 
-  <!-- Search bar 130 -->
   <div id="search-container" style="
     position: fixed;
     top: 130px; 
@@ -143,7 +140,6 @@
     </div>
   </div>
 
-  <!-- Modal za detalje -->
   <div id="details-modal" class="modal-backdrop" style="display:none;">
     <div class="modal">
       <div class="modal-header">
@@ -162,11 +158,33 @@
   <script>
     const map = L.map('map').setView([9.08, 8.67], 6);
 
+    map.createPane('linesPane');
+    map.getPane('linesPane').style.zIndex = 200;
+
+    map.createPane('markersPane');
+    map.getPane('markersPane').style.zIndex = 400;
+
+    const lineLayers = {
+      feeder33: L.layerGroup(),
+      feeder11: L.layerGroup()
+    };
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap'
     }).addTo(map);
 
-    // Granice Nigerije
+    function getLineColor(tip) {
+      if (tip === "feeder33") return "#ff9f1a";
+      if (tip === "feeder11") return "#00b894";
+      return "#636e72";
+    }
+
+    function getLineWeight(tip) {
+      if (tip === "feeder33") return 4;
+      if (tip === "feeder11") return 2.5;
+      return 2;
+    }
+
     fetch("/static/nigeria.json")
       .then(res => res.json())
       .then(data => {
@@ -175,7 +193,6 @@
         }).addTo(map);
       });
 
-    // MODAL
     const modalEl = document.getElementById('details-modal');
     const modalTitleEl = document.getElementById('modal-title');
     const modalInfoEl = document.getElementById('modal-info');
@@ -199,11 +216,172 @@
       }
     });
 
-    // Globalne promenljive za search
     let allFeatures = [];
     const featureMarkers = {};
+    const markersByStationKey = {};
+    const defaultMarkerStyleByStationKey = {};
+    let allLineLeafletLayers = [];
+    let selectedLineLayer = null;
 
-    // Učitavanje svih stanica
+    function resetAllLines() {
+      allLineLeafletLayers.forEach((layer) => {
+        const tip = layer.feature?.properties?.tip;
+        layer.setStyle({
+          color: getLineColor(tip),
+          weight: getLineWeight(tip),
+          opacity: 0.75
+        });
+      });
+    }
+
+    function resetAllStations() {
+      Object.entries(markersByStationKey).forEach(([stationKey, marker]) => {
+        const baseStyle = defaultMarkerStyleByStationKey[stationKey];
+        if (!baseStyle) return;
+
+        marker.setStyle({
+          radius: baseStyle.radius,
+          fillColor: baseStyle.fillColor,
+          color: baseStyle.color,
+          weight: baseStyle.weight,
+          fillOpacity: baseStyle.fillOpacity,
+          opacity: baseStyle.opacity
+        });
+      });
+    }
+
+    function resetSelectedLine() {
+      selectedLineLayer = null;
+      resetAllLines();
+      resetAllStations();
+    }
+
+    function dimAllLinesExcept(activeLayer) {
+      allLineLeafletLayers.forEach((layer) => {
+        const tip = layer.feature?.properties?.tip;
+
+        if (layer === activeLayer) {
+          layer.setStyle({
+            color: getLineColor(tip),
+            weight: getLineWeight(tip) + 3,
+            opacity: 1
+          });
+        } else {
+          layer.setStyle({
+            color: "#9ca3af",
+            weight: Math.max(1, getLineWeight(tip) - 0.5),
+            opacity: 0.18
+          });
+        }
+      });
+    }
+
+    function dimStationsExcept(stationKeysToKeep) {
+      const keepSet = new Set(stationKeysToKeep || []);
+
+      Object.entries(markersByStationKey).forEach(([stationKey, marker]) => {
+        const baseStyle = defaultMarkerStyleByStationKey[stationKey];
+        if (!baseStyle) return;
+
+        if (keepSet.has(stationKey)) {
+          marker.setStyle({
+            radius: baseStyle.radius,
+            fillColor: baseStyle.fillColor,
+            color: "#111827",
+            weight: 2.5,
+            fillOpacity: 1,
+            opacity: 1
+          });
+        } else {
+          marker.setStyle({
+            radius: baseStyle.radius,
+            fillColor: "#d1d5db",
+            color: "#9ca3af",
+            weight: 1,
+            fillOpacity: 0.22,
+            opacity: 0.22
+          });
+        }
+      });
+    }
+
+    function focusOnLine(layer) {
+      selectedLineLayer = layer;
+      dimAllLinesExcept(layer);
+      dimStationsExcept(layer.stationKeys || []);
+    }
+
+    map.on('click', function () {
+      resetSelectedLine();
+    });
+
+    fetch("/data/vodovi")
+      .then(res => res.json())
+      .then(data => {
+        data.features.forEach((feature) => {
+          const tip = feature.properties.tip;
+          const color = getLineColor(tip);
+          const weight = getLineWeight(tip);
+
+          const layer = L.geoJSON(feature, {
+            pane: 'linesPane',
+            style: {
+              color: color,
+              weight: weight,
+              opacity: 0.75
+            },
+            onEachFeature: function (f, l) {
+              l.stationKeys = f.properties.station_keys || [];
+              allLineLeafletLayers.push(l);
+
+              l.bindPopup(`
+                <div style="text-align:center">
+                  <b style="color:${color}">${tip.toUpperCase()}</b><br>
+                  <strong>${f.properties.naziv || "Nepoznat vod"}</strong><br>
+                  Povezanih čvorova: ${f.properties.children_count || 0}<br>
+                  ${f.properties.nameplate_rating ? `Rating: ${f.properties.nameplate_rating}<br>` : ""}
+                </div>
+              `);
+
+              l.on('mouseover', function () {
+                if (selectedLineLayer !== l) {
+                  l.setStyle({
+                    weight: getLineWeight(tip) + 1,
+                    opacity: 0.95
+                  });
+                }
+              });
+
+              l.on('mouseout', function () {
+                if (selectedLineLayer !== l) {
+                  l.setStyle({
+                    weight: getLineWeight(tip),
+                    opacity: 0.75
+                  });
+                }
+              });
+
+              l.on('click', function (e) {
+                L.DomEvent.stopPropagation(e);
+                focusOnLine(l);
+
+                map.fitBounds(l.getBounds(), {
+                  padding: [30, 30]
+                });
+              });
+            }
+          });
+
+          if (lineLayers[tip]) {
+            lineLayers[tip].addLayer(layer);
+          }
+        });
+
+        lineLayers.feeder33.addTo(map);
+        lineLayers.feeder11.addTo(map);
+      })
+      .catch(err => console.error("Greška pri učitavanju vodova:", err));
+
     fetch("/data/trafostanice")
       .then(res => res.json())
       .then(data => {
@@ -231,6 +409,9 @@
 
         allFeatures.forEach((f, idx) => {
           const tip = f.properties.tip;
+          const stationId = f.properties.id;
+          const stationKey = `${tip}:${stationId}`;
+
           if (!counts[tip]) counts[tip] = 0;
           counts[tip]++;
 
@@ -241,15 +422,17 @@
           const lon = f.geometry.coordinates[0];
 
           const marker = L.circleMarker([lat, lon], {
+            pane: 'markersPane',
             radius: r,
             fillColor: color,
             color: "#ffffff",
             weight: 1.5,
-            fillOpacity: 0.85
+            fillOpacity: 0.85,
+            opacity: 1
           });
 
-          // Zoom na klik
-          marker.on('click', () => {
+          marker.on('click', (e) => {
+            L.DomEvent.stopPropagation(e);
             map.flyTo([lat, lon], 10, { animate: true, duration: 1.0 });
           });
 
@@ -269,13 +452,21 @@
 
           layers[tip].addLayer(marker);
           featureMarkers[idx] = marker;
+          markersByStationKey[stationKey] = marker;
+          defaultMarkerStyleByStationKey[stationKey] = {
+            radius: r,
+            fillColor: color,
+            color: "#ffffff",
+            weight: 1.5,
+            fillOpacity: 0.85,
+            opacity: 1
+          };
         });
 
         layers.transmission.addTo(map);
         layers.substation.addTo(map);
         layers.distribution.addTo(map);
 
-        // Legenda
         const legend = L.control({ position: 'bottomright' });
         legend.onAdd = function () {
           const div = L.DomUtil.create('div', 'legend');
@@ -294,11 +485,26 @@
             `;
           });
 
+          div.innerHTML += `
+            <hr style="margin:8px 0;border:none;border-top:1px solid #e5e7eb;">
+            <b>Vodovi</b><br>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="width:16px;height:0;border-top:4px solid #ff9f1a;"></span>
+              Feeder 33kV
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+              <span style="width:16px;height:0;border-top:3px solid #00b894;"></span>
+              Feeder 11kV
+            </div>
+            <div style="margin-top:8px;color:#6b7280;font-size:12px;">
+              Klik na vod za fokus. Klik na praznu mapu za reset.
+            </div>
+          `;
+
           return div;
         };
         legend.addTo(map);
 
-        // Toggle slojeva
         const toggle = L.control({ position: 'topright' });
         toggle.onAdd = function () {
           const div = L.DomUtil.create('div', 'layer-toggle');
@@ -316,6 +522,14 @@
             <label>
               <input type="checkbox" id="chk-distribution" checked />
               Distribution
+            </label>
+            <label>
+              <input type="checkbox" id="chk-feeder33" checked />
+              Feeder 33kV
+            </label>
+            <label>
+              <input type="checkbox" id="chk-feeder11" checked />
+              Feeder 11kV
             </label>
           `;
 
@@ -338,10 +552,18 @@
           if (e.target.checked) map.addLayer(layers.distribution);
           else map.removeLayer(layers.distribution);
         });
+
+        document.getElementById('chk-feeder33').addEventListener('change', (e) => {
+          if (e.target.checked) map.addLayer(lineLayers.feeder33);
+          else map.removeLayer(lineLayers.feeder33);
+        });
+
+        document.getElementById('chk-feeder11').addEventListener('change', (e) => {
+          if (e.target.checked) map.addLayer(lineLayers.feeder11);
+          else map.removeLayer(lineLayers.feeder11);
+        });
       })
       .catch(err => console.error("Greška pri učitavanju stanica:", err));
-
-    // SEARCH
 
     function searchStationByName() {
       const input = document.getElementById('search-input');
@@ -379,6 +601,8 @@
         searchStationByName();
       }
     });
+
+    window.openModal = openModal;
   </script>
 </body>
 </html>
