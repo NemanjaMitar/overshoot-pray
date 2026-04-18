@@ -10,8 +10,8 @@ Usage:
     from fetch_ss import get_ss_info, get_ss_feeders, get_ss_readings_24h
 """
 
-from db import q
-from fetch_feeder import get_feeder_readings_24h
+from .db import q
+from .fetch_feeder import get_feeder_readings_24h
 import pandas as pd
 
 

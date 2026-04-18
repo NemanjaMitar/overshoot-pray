@@ -11,8 +11,8 @@ Thin layer over fetch_ts and fetch_ss. The UI flow is:
      -> returns that feeder's info + readings for plotting
 """
 
-from fetch_ts import get_ts_readings_24h
-from fetch_ss import get_ss_readings_24h
+from .fetch_ts import get_ts_readings_24h
+from .fetch_ss import get_ss_readings_24h
 import pandas as pd
 
 

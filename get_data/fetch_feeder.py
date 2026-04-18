@@ -3,7 +3,7 @@ Generic feeder reading fetcher by meter_id.
 Used by fetch_ts and fetch_ss to avoid duplicating SQL per feeder type.
 """
 
-from db import q
+from .db import q
 import pandas as pd
 
 

@@ -1,6 +1,8 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 import os
 import math
+import json
+from plotly.utils import PlotlyJSONEncoder
 
 from database.repositories import (
     DistributionSubstationRepository,
@@ -10,6 +12,10 @@ from database.repositories import (
     Feeder33Repository,
     Feeder33SubstationRepository,
 )
+
+from get_data.plot_station import plot_station
+from get_data.fetch_ts import get_ts_feeders
+from get_data.fetch_ss import get_ss_feeders
 
 app = Flask(__name__)
 
@@ -37,16 +43,11 @@ def _euclidean_distance(a, b):
 
 
 def _order_by_nearest(start_coord, coords):
-    """
-    Vraća coords poređane nearest-neighbor heuristikom
-    počevši od start_coord.
-    """
     if not start_coord or not coords:
         return []
 
     unique_coords = []
     seen = set()
-
     for c in coords:
         key = (round(c[0], 6), round(c[1], 6))
         if key not in seen:
@@ -66,11 +67,84 @@ def _order_by_nearest(start_coord, coords):
     return ordered
 
 
+# ── Helpers za konverziju feedera u JSON opcije ───────────────────────────────
+# get_ts_feeders() vraća {"F33": df, "F11_trade": df}
+# get_ss_feeders() vraća {"F33_incoming": df, "F11_outgoing": df}
+# Nijedan df nema kolonu "role" — dodajemo je ovdje.
+
+def _ts_feeders_to_options(feeders_dict):
+    """
+    Konvertuje rezultat get_ts_feeders() u listu JSON-serializable dict-ova.
+    Dodaje 'role' kolonu koja nedostaje u DataFrameu.
+    """
+    options = []
+
+    for _, row in feeders_dict["F33"].iterrows():
+        mid = row.get("meter_id")
+        nkva = row.get("nameplate_kva")
+        options.append({
+            "id":            int(row["id"]),
+            "name":          row["name"],
+            "role":          "F33",
+            "meter_id":      int(mid) if mid is not None and mid == mid else None,
+            "nameplate_kva": int(nkva) if nkva is not None and nkva == nkva else None,
+            "has_readings":  mid is not None and mid == mid,
+        })
+
+    for _, row in feeders_dict["F11_trade"].iterrows():
+        mid = row.get("meter_id")
+        nkva = row.get("nameplate_kva")
+        options.append({
+            "id":            int(row["id"]),
+            "name":          row["name"],
+            "role":          "F11_trade",
+            "meter_id":      int(mid) if mid is not None and mid == mid else None,
+            "nameplate_kva": int(nkva) if nkva is not None and nkva == nkva else None,
+            "has_readings":  mid is not None and mid == mid,
+        })
+
+    return options
+
+
+def _ss_feeders_to_options(feeders_dict):
+    """
+    Konvertuje rezultat get_ss_feeders() u listu JSON-serializable dict-ova.
+    Dodaje 'role' kolonu koja nedostaje u DataFrameu.
+    """
+    options = []
+
+    for _, row in feeders_dict["F33_incoming"].iterrows():
+        mid = row.get("meter_id")
+        nkva = row.get("nameplate_kva")
+        options.append({
+            "id":            int(row["id"]),
+            "name":          row["name"],
+            "role":          "F33_incoming",
+            "meter_id":      int(mid) if mid is not None and mid == mid else None,
+            "nameplate_kva": int(nkva) if nkva is not None and nkva == nkva else None,
+            "has_readings":  mid is not None and mid == mid,
+        })
+
+    for _, row in feeders_dict["F11_outgoing"].iterrows():
+        mid = row.get("meter_id")
+        nkva = row.get("nameplate_kva")
+        options.append({
+            "id":            int(row["id"]),
+            "name":          row["name"],
+            "role":          "F11_outgoing",
+            "meter_id":      int(mid) if mid is not None and mid == mid else None,
+            "nameplate_kva": int(nkva) if nkva is not None and nkva == nkva else None,
+            "has_readings":  mid is not None and mid == mid,
+        })
+
+    return options
+
+
 @app.route("/data/trafostanice")
 def data_trafostanice():
     trans_repo = TransmissionStationRepository()
-    sub_repo = SubstationRepository()
-    dist_repo = DistributionSubstationRepository()
+    sub_repo   = SubstationRepository()
+    dist_repo  = DistributionSubstationRepository()
 
     features = []
 
@@ -84,9 +158,9 @@ def data_trafostanice():
                 "coordinates": [float(row["Longitude"]), float(row["Latitude"])],
             },
             "properties": {
-                "id": row.get("Id"),
+                "id":    row.get("Id"),
                 "naziv": row.get("Name") or "Nepoznato",
-                "tip": "transmission",
+                "tip":   "transmission",
             },
         })
 
@@ -100,9 +174,9 @@ def data_trafostanice():
                 "coordinates": [float(row["Longitude"]), float(row["Latitude"])],
             },
             "properties": {
-                "id": row.get("Id"),
+                "id":    row.get("Id"),
                 "naziv": row.get("Name") or "Nepoznato",
-                "tip": "substation",
+                "tip":   "substation",
             },
         })
 
@@ -116,9 +190,9 @@ def data_trafostanice():
                 "coordinates": [float(row["Longitude"]), float(row["Latitude"])],
             },
             "properties": {
-                "id": row.get("Id"),
+                "id":    row.get("Id"),
                 "naziv": row.get("Name") or "Nepoznato",
-                "tip": "distribution",
+                "tip":   "distribution",
             },
         })
 
@@ -130,42 +204,28 @@ def data_trafostanice():
 
 @app.route("/data/vodovi")
 def data_vodovi():
-    """
-    Hijerarhija po slici:
-
-    F33:
-      TS -> SS
-      TS -> DT (direktno)  [dozvoljeno]
-
-    F11:
-      SS -> DT             [standard]
-      TS -> DT             [trade F11]
-
-    Geometrija je i dalje vizuelna aproksimacija jer nemamo stvarnu GIS trasu.
-    Veze između čvorova su stvarne iz baze.
-    """
-    trans_repo = TransmissionStationRepository()
-    sub_repo = SubstationRepository()
-    dist_repo = DistributionSubstationRepository()
-    feeder11_repo = Feeder11Repository()
-    feeder33_repo = Feeder33Repository()
+    trans_repo       = TransmissionStationRepository()
+    sub_repo         = SubstationRepository()
+    dist_repo        = DistributionSubstationRepository()
+    feeder11_repo    = Feeder11Repository()
+    feeder33_repo    = Feeder33Repository()
     feeder33_sub_repo = Feeder33SubstationRepository()
 
     transmission_rows = trans_repo.get_all(limit=None)
-    substation_rows = sub_repo.get_all(limit=None)
+    substation_rows   = sub_repo.get_all(limit=None)
     distribution_rows = dist_repo.get_all(limit=None)
-    feeder11_rows = feeder11_repo.get_all(limit=None)
-    feeder33_rows = feeder33_repo.get_all(limit=None)
+    feeder11_rows     = feeder11_repo.get_all(limit=None)
+    feeder33_rows     = feeder33_repo.get_all(limit=None)
     feeder33_sub_rows = feeder33_sub_repo.get_all(limit=None)
 
     transmission_by_id = {row["Id"]: row for row in transmission_rows}
-    substation_by_id = {row["Id"]: row for row in substation_rows}
+    substation_by_id   = {row["Id"]: row for row in substation_rows}
     distribution_by_id = {row["Id"]: row for row in distribution_rows}
 
     feeder33_to_substations = {}
     for row in feeder33_sub_rows:
         feeder_id = row.get("Feeders33Id")
-        sub_id = row.get("SubstationsId")
+        sub_id    = row.get("SubstationsId")
         if feeder_id is None or sub_id is None:
             continue
         feeder33_to_substations.setdefault(feeder_id, []).append(sub_id)
@@ -174,27 +234,22 @@ def data_vodovi():
     feeder33_to_distributions = {}
 
     for row in distribution_rows:
-        dist_id = row.get("Id")
+        dist_id    = row.get("Id")
         feeder11_id = row.get("Feeder11Id")
         feeder33_id = row.get("Feeder33Id")
 
         if feeder11_id is not None:
             feeder11_to_distributions.setdefault(feeder11_id, []).append(dist_id)
-
         if feeder33_id is not None:
             feeder33_to_distributions.setdefault(feeder33_id, []).append(dist_id)
 
     features = []
 
-    # ---------------------------
-    # FEEDERS 33
-    # Hijerarhija:
-    # TS -> SS -> (eventualno kasnije direktni DT)
-    # ---------------------------
+    # FEEDERS 33: TS -> SS -> eventualno direktni DT
     for feeder in feeder33_rows:
-        feeder_id = feeder.get("Id")
+        feeder_id   = feeder.get("Id")
         feeder_name = feeder.get("Name") or f"Feeder33 #{feeder_id}"
-        ts_id = feeder.get("TsId")
+        ts_id       = feeder.get("TsId")
 
         source_row = transmission_by_id.get(ts_id)
         if not source_row:
@@ -204,14 +259,13 @@ def data_vodovi():
         if not source_coord:
             continue
 
-        substation_coords = []
+        substation_coords  = []
         distribution_coords = []
-        station_keys = []
+        station_keys       = []
 
         if ts_id is not None:
             station_keys.append(f"transmission:{ts_id}")
 
-        # 1) prvo SS
         for sub_id in feeder33_to_substations.get(feeder_id, []):
             sub_row = substation_by_id.get(sub_id)
             if not sub_row:
@@ -221,7 +275,6 @@ def data_vodovi():
                 substation_coords.append(coord)
                 station_keys.append(f"substation:{sub_id}")
 
-        # 2) onda eventualni direktni DT na F33
         for dist_id in feeder33_to_distributions.get(feeder_id, []):
             dist_row = distribution_by_id.get(dist_id)
             if not dist_row:
@@ -231,79 +284,60 @@ def data_vodovi():
                 distribution_coords.append(coord)
                 station_keys.append(f"distribution:{dist_id}")
 
-        ordered_substations = _order_by_nearest(source_coord, substation_coords)
-
-        last_coord = source_coord
-        if ordered_substations:
-            last_coord = ordered_substations[-1]
-
+        ordered_substations  = _order_by_nearest(source_coord, substation_coords)
+        last_coord           = ordered_substations[-1] if ordered_substations else source_coord
         ordered_distributions = _order_by_nearest(last_coord, distribution_coords)
 
         coords = [source_coord] + ordered_substations + ordered_distributions
-
         if len(coords) < 2:
             continue
 
         features.append({
             "type": "Feature",
-            "geometry": {
-                "type": "LineString",
-                "coordinates": coords,
-            },
+            "geometry": {"type": "LineString", "coordinates": coords},
             "properties": {
-                "id": feeder_id,
-                "naziv": feeder_name,
-                "tip": "feeder33",
-                "source_type": "transmission",
-                "source_id": ts_id,
-                "children_count": len(substation_coords) + len(distribution_coords),
+                "id":               feeder_id,
+                "naziv":            feeder_name,
+                "tip":              "feeder33",
+                "source_type":      "transmission",
+                "source_id":        ts_id,
+                "children_count":   len(substation_coords) + len(distribution_coords),
                 "nameplate_rating": feeder.get("NameplateRating"),
-                "meter_id": feeder.get("MeterId"),
-                "station_keys": station_keys,
+                "meter_id":         feeder.get("MeterId"),
+                "station_keys":     station_keys,
             },
         })
 
-    # ---------------------------
-    # FEEDERS 11
-    # Hijerarhija:
-    # standardno: SS -> DT
-    # trade F11: TS -> DT
-    # ---------------------------
+    # FEEDERS 11: SS -> DT ili TS -> DT (trade)
     for feeder in feeder11_rows:
-        feeder_id = feeder.get("Id")
+        feeder_id   = feeder.get("Id")
         feeder_name = feeder.get("Name") or f"Feeder11 #{feeder_id}"
+        ss_id       = feeder.get("SsId")
+        ts_id       = feeder.get("TsId")
 
-        ss_id = feeder.get("SsId")
-        ts_id = feeder.get("TsId")
-
-        source_row = None
+        source_row   = None
         source_coord = None
-        source_type = None
-        source_id = None
+        source_type  = None
+        source_id    = None
         station_keys = []
 
-        # PRIORITET:
-        # ako ima SS -> standardni F11
-        # ako nema SS, a ima TS -> trade F11
         if ss_id is not None and ss_id in substation_by_id:
-            source_row = substation_by_id.get(ss_id)
+            source_row   = substation_by_id[ss_id]
             source_coord = _to_coord(source_row)
-            source_type = "substation"
-            source_id = ss_id
+            source_type  = "substation"
+            source_id    = ss_id
             station_keys.append(f"substation:{ss_id}")
-
         elif ts_id is not None and ts_id in transmission_by_id:
-            source_row = transmission_by_id.get(ts_id)
+            source_row   = transmission_by_id[ts_id]
             source_coord = _to_coord(source_row)
-            source_type = "transmission"
-            source_id = ts_id
+            source_type  = "transmission"
+            source_id    = ts_id
             station_keys.append(f"transmission:{ts_id}")
 
         if not source_row or not source_coord:
             continue
 
         distribution_coords = []
-
         for dist_id in feeder11_to_distributions.get(feeder_id, []):
             dist_row = distribution_by_id.get(dist_id)
             if not dist_row:
@@ -321,23 +355,20 @@ def data_vodovi():
 
         features.append({
             "type": "Feature",
-            "geometry": {
-                "type": "LineString",
-                "coordinates": coords,
-            },
+            "geometry": {"type": "LineString", "coordinates": coords},
             "properties": {
-                "id": feeder_id,
-                "naziv": feeder_name,
-                "tip": "feeder11",
-                "source_type": source_type,
-                "source_id": source_id,
-                "children_count": len(distribution_coords),
-                "nameplate_rating": feeder.get("NameplateRating"),
-                "meter_id": feeder.get("MeterId"),
+                "id":                feeder_id,
+                "naziv":             feeder_name,
+                "tip":               "feeder11",
+                "source_type":       source_type,
+                "source_id":         source_id,
+                "children_count":    len(distribution_coords),
+                "nameplate_rating":  feeder.get("NameplateRating"),
+                "meter_id":          feeder.get("MeterId"),
                 "parent_feeder33_id": feeder.get("Feeder33Id"),
-                "ts_id": ts_id,
-                "ss_id": ss_id,
-                "station_keys": station_keys,
+                "ts_id":             ts_id,
+                "ss_id":             ss_id,
+                "station_keys":      station_keys,
             },
         })
 
@@ -345,6 +376,66 @@ def data_vodovi():
         "type": "FeatureCollection",
         "features": features,
     })
+
+
+@app.route("/api/station-options/<station_type>/<int:station_id>")
+def station_options(station_type, station_id):
+    station_type = station_type.upper()
+
+    try:
+        if station_type == "DT":
+            return jsonify({
+                "station_type":    "DT",
+                "station_id":      station_id,
+                "requires_feeder": False,
+                "feeders":         [],
+            })
+
+        if station_type == "TS":
+            feeders = get_ts_feeders(station_id)
+            return jsonify({
+                "station_type":    "TS",
+                "station_id":      station_id,
+                "requires_feeder": True,
+                "feeders":         _ts_feeders_to_options(feeders),
+            })
+
+        if station_type == "SS":
+            feeders = get_ss_feeders(station_id)
+            return jsonify({
+                "station_type":    "SS",
+                "station_id":      station_id,
+                "requires_feeder": True,
+                "feeders":         _ss_feeders_to_options(feeders),
+            })
+
+        return jsonify({"error": f"Invalid station type: {station_type}"}), 400
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/station-plot/<station_type>/<int:station_id>")
+def station_plot(station_type, station_id):
+    station_type = station_type.upper()
+    feeder_id    = request.args.get("feeder_id", type=int)
+
+    try:
+        figure = plot_station(station_type, station_id, feeder_id=feeder_id)
+        payload = {
+            "station_type": station_type,
+            "station_id":   station_id,
+            "feeder_id":    feeder_id,
+            "figure":       figure,
+        }
+        return app.response_class(
+            response=json.dumps(payload, cls=PlotlyJSONEncoder),
+            mimetype="application/json",
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
 
 
 if __name__ == "__main__":

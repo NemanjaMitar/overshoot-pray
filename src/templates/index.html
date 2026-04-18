@@ -79,8 +79,9 @@
       border-radius: 10px;
       box-shadow: 0 10px 25px rgba(0,0,0,0.3);
       padding: 16px 20px;
-      min-width: 320px;
-      max-width: 480px;
+      width: min(92vw, 1200px);
+      max-height: 90vh;
+      overflow: auto;
     }
 
     .modal-header {
@@ -105,6 +106,43 @@
     .modal-body {
       font-size: 14px;
     }
+
+    .control-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .control-row select,
+    .control-row button {
+      padding: 8px 10px;
+      font-size: 13px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: white;
+    }
+
+    .control-row button {
+      cursor: pointer;
+      background: #f9fafb;
+    }
+
+    #plot-container {
+      min-height: 420px;
+    }
+
+    #loading-message {
+      color: #4b5563;
+      margin-bottom: 10px;
+    }
+
+    #error-message {
+      color: #b91c1c;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -112,7 +150,7 @@
 
   <div id="search-container" style="
     position: fixed;
-    top: 130px; 
+    top: 20px;
     left: 50px;
     z-index:1001;
   ">
@@ -143,17 +181,26 @@
   <div id="details-modal" class="modal-backdrop" style="display:none;">
     <div class="modal">
       <div class="modal-header">
-        <h2 id="modal-title">Detalji stanice</h2>
+        <h2 id="modal-title">Analiza stanice</h2>
         <button id="modal-close">&times;</button>
       </div>
       <div class="modal-body">
-        <p>Ovde će ići detaljni graf/plot za odabranu stanicu.</p>
-        <p id="modal-info" style="font-size:13px;color:#4b5563;"></p>
+        <div id="station-controls" class="control-row" style="display:none;">
+          <label for="feeder-select"><b>Feeder:</b></label>
+          <select id="feeder-select"></select>
+          <button id="load-plot-btn" type="button">Prikaži graf</button>
+        </div>
+
+        <div id="loading-message" style="display:none;">Učitavanje...</div>
+        <div id="error-message" style="display:none;"></div>
+        <div id="modal-info" style="font-size:13px;color:#4b5563;margin-bottom:12px;"></div>
+        <div id="plot-container"></div>
       </div>
     </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 
   <script>
     const map = L.map('map').setView([9.08, 8.67], 6);
@@ -197,17 +244,188 @@
     const modalTitleEl = document.getElementById('modal-title');
     const modalInfoEl = document.getElementById('modal-info');
     const modalCloseBtn = document.getElementById('modal-close');
+    const feederSelectEl = document.getElementById('feeder-select');
+    const loadPlotBtnEl = document.getElementById('load-plot-btn');
+    const stationControlsEl = document.getElementById('station-controls');
+    const loadingMessageEl = document.getElementById('loading-message');
+    const errorMessageEl = document.getElementById('error-message');
+    const plotContainerEl = document.getElementById('plot-container');
 
-    function openModal(stationName, stationType) {
-      modalTitleEl.textContent = stationName || 'Detalji stanice';
-      modalInfoEl.textContent =
-        `Tip stanice: ${stationType.toUpperCase()}. Ovde će kolege ubaciti plot i dodatne informacije.`;
+    let currentStationContext = null;
+    let allFeatures = [];
+    const featureMarkers = {};
+    const markersByStationKey = {};
+    const defaultMarkerStyleByStationKey = {};
+    let allLineLeafletLayers = [];
+    let selectedLineLayer = null;
+
+    function clearModalState() {
+      stationControlsEl.style.display = 'none';
+      loadingMessageEl.style.display = 'none';
+      errorMessageEl.style.display = 'none';
+      errorMessageEl.textContent = '';
+      modalInfoEl.textContent = '';
+      feederSelectEl.innerHTML = '';
+      plotContainerEl.innerHTML = '';
+    }
+
+    function openModal() {
       modalEl.style.display = 'flex';
     }
 
     function closeModal() {
       modalEl.style.display = 'none';
+      clearModalState();
+      currentStationContext = null;
     }
+
+    function setLoading(isLoading, message = 'Učitavanje...') {
+      loadingMessageEl.style.display = isLoading ? 'block' : 'none';
+      loadingMessageEl.textContent = message;
+    }
+
+    function setError(message) {
+      errorMessageEl.style.display = message ? 'block' : 'none';
+      errorMessageEl.textContent = message || '';
+    }
+
+    function stationTipToApiType(tip) {
+      if (tip === 'distribution') return 'DT';
+      if (tip === 'substation') return 'SS';
+      if (tip === 'transmission') return 'TS';
+      return null;
+    }
+
+    async function fetchStationOptions(stationType, stationId) {
+      const res = await fetch(`/api/station-options/${stationType}/${stationId}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Greška pri učitavanju feeder opcija');
+      }
+      return data;
+    }
+
+    async function fetchStationPlot(stationType, stationId, feederId = null) {
+      let url = `/api/station-plot/${stationType}/${stationId}`;
+      if (feederId !== null && feederId !== undefined) {
+        url += `?feeder_id=${encodeURIComponent(feederId)}`;
+      }
+
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Greška pri učitavanju grafa');
+      }
+      return data;
+    }
+
+    function renderPlotlyFigure(figure) {
+      plotContainerEl.innerHTML = '';
+      const plotDiv = document.createElement('div');
+      plotDiv.id = 'station-plotly-div';
+      plotContainerEl.appendChild(plotDiv);
+
+      Plotly.newPlot(plotDiv, figure.data, figure.layout, {
+        responsive: true,
+        displaylogo: false
+      });
+    }
+
+    function populateFeederDropdown(feeders) {
+      feederSelectEl.innerHTML = '';
+
+      if (!feeders || feeders.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'Nema dostupnih feeder-a';
+        feederSelectEl.appendChild(opt);
+        return;
+      }
+
+      feeders.forEach((f) => {
+        const opt = document.createElement('option');
+        opt.value = String(f.id);
+
+        let label = `${f.name} [${f.role}]`;
+        if (!f.has_readings) {
+          label += ' - nema očitanja';
+        }
+
+        opt.textContent = label;
+        opt.disabled = !f.has_readings;
+        feederSelectEl.appendChild(opt);
+      });
+
+      const firstEnabled = Array.from(feederSelectEl.options).find(o => !o.disabled);
+      if (firstEnabled) {
+        feederSelectEl.value = firstEnabled.value;
+      }
+    }
+
+    async function loadPlotForCurrentSelection() {
+      if (!currentStationContext) return;
+
+      const { stationType, stationId } = currentStationContext;
+      const feederId = feederSelectEl.value ? parseInt(feederSelectEl.value, 10) : null;
+
+      try {
+        setError('');
+        setLoading(true, 'Generišem graf...');
+        const payload = await fetchStationPlot(stationType, stationId, feederId);
+        renderPlotlyFigure(payload.figure);
+      } catch (err) {
+        plotContainerEl.innerHTML = '';
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    async function openStationAnalysis(stationTip, stationId, stationName) {
+      const stationType = stationTipToApiType(stationTip);
+      if (!stationType || !stationId) return;
+
+      currentStationContext = { stationType, stationId, stationName };
+      modalTitleEl.textContent = `${stationName || 'Stanica'} — analiza`;
+      clearModalState();
+      openModal();
+      setLoading(true, 'Učitavam stanicu...');
+
+      try {
+        const options = await fetchStationOptions(stationType, stationId);
+
+        if (stationType === 'DT') {
+          modalInfoEl.textContent = `DT analiza se generiše direktno za izabranu stanicu.`;
+          const payload = await fetchStationPlot(stationType, stationId);
+          renderPlotlyFigure(payload.figure);
+          return;
+        }
+
+        stationControlsEl.style.display = 'flex';
+        populateFeederDropdown(options.feeders);
+
+        if (stationType === 'TS') {
+          modalInfoEl.textContent = 'Izaberi feeder koji izlazi iz TS stanice.';
+        } else if (stationType === 'SS') {
+          modalInfoEl.textContent = 'Izaberi feeder povezan sa SS stanicom.';
+        }
+
+        const hasEnabledOption = Array.from(feederSelectEl.options).some(o => !o.disabled && o.value);
+        if (hasEnabledOption) {
+          await loadPlotForCurrentSelection();
+        } else {
+          setError('Nijedan feeder sa očitanjima nije dostupan za ovu stanicu.');
+        }
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadPlotBtnEl.addEventListener('click', async () => {
+      await loadPlotForCurrentSelection();
+    });
 
     modalCloseBtn.addEventListener('click', closeModal);
     modalEl.addEventListener('click', (e) => {
@@ -215,13 +433,6 @@
         closeModal();
       }
     });
-
-    let allFeatures = [];
-    const featureMarkers = {};
-    const markersByStationKey = {};
-    const defaultMarkerStyleByStationKey = {};
-    let allLineLeafletLayers = [];
-    let selectedLineLayer = null;
 
     function resetAllLines() {
       allLineLeafletLayers.forEach((layer) => {
@@ -256,6 +467,12 @@
       resetAllStations();
     }
 
+    function bringLineToFront(layer) {
+      if (layer && typeof layer.bringToFront === 'function') {
+        layer.bringToFront();
+      }
+    }
+
     function dimAllLinesExcept(activeLayer) {
       allLineLeafletLayers.forEach((layer) => {
         const tip = layer.feature?.properties?.tip;
@@ -263,14 +480,15 @@
         if (layer === activeLayer) {
           layer.setStyle({
             color: getLineColor(tip),
-            weight: getLineWeight(tip) + 3,
+            weight: getLineWeight(tip) + 5,
             opacity: 1
           });
+          bringLineToFront(layer);
         } else {
           layer.setStyle({
-            color: "#9ca3af",
-            weight: Math.max(1, getLineWeight(tip) - 0.5),
-            opacity: 0.18
+            color: "#c7cdd4",
+            weight: Math.max(1, getLineWeight(tip) - 0.3),
+            opacity: 0.08
           });
         }
       });
@@ -285,10 +503,10 @@
 
         if (keepSet.has(stationKey)) {
           marker.setStyle({
-            radius: baseStyle.radius,
+            radius: baseStyle.radius + 1,
             fillColor: baseStyle.fillColor,
             color: "#111827",
-            weight: 2.5,
+            weight: 3,
             fillOpacity: 1,
             opacity: 1
           });
@@ -296,10 +514,10 @@
           marker.setStyle({
             radius: baseStyle.radius,
             fillColor: "#d1d5db",
-            color: "#9ca3af",
+            color: "#b0b7c3",
             weight: 1,
-            fillOpacity: 0.22,
-            opacity: 0.22
+            fillOpacity: 0.12,
+            opacity: 0.18
           });
         }
       });
@@ -431,24 +649,16 @@
             opacity: 1
           });
 
-          marker.on('click', (e) => {
+          marker.on('click', async (e) => {
             L.DomEvent.stopPropagation(e);
             map.flyTo([lat, lon], 10, { animate: true, duration: 1.0 });
+            await openStationAnalysis(tip, stationId, f.properties.naziv);
           });
 
-          marker.bindPopup(`
-            <div style="text-align:center">
-              <b style="color:${color}">${tip.toUpperCase()}</b><br>
-              <strong>${f.properties.naziv}</strong><br>
-              <button
-                type="button"
-                style="margin-top:6px;padding:4px 8px;font-size:12px;border-radius:6px;border:1px solid #d1d5db;cursor:pointer;background:#f9fafb;"
-                onclick="openModal('${(f.properties.naziv || '').replace(/'/g, "\\'")}', '${tip}')"
-              >
-                Detalji
-              </button>
-            </div>
-          `);
+          marker.bindTooltip(`${f.properties.naziv}`, {
+            direction: 'top',
+            offset: [0, -6]
+          });
 
           layers[tip].addLayer(marker);
           featureMarkers[idx] = marker;
@@ -497,7 +707,7 @@
               Feeder 11kV
             </div>
             <div style="margin-top:8px;color:#6b7280;font-size:12px;">
-              Klik na vod za fokus. Klik na praznu mapu za reset.
+              Klik na vod za fokus. Klik na stanicu za analizu.
             </div>
           `;
 
@@ -591,7 +801,7 @@
       const marker = featureMarkers[foundIdx];
       if (marker) {
         map.flyTo([lat, lon], 10, { animate: true, duration: 1.0 });
-        marker.openPopup();
+        marker.openTooltip();
       }
     }
 
@@ -601,8 +811,6 @@
         searchStationByName();
       }
     });
-
-    window.openModal = openModal;
   </script>
 </body>
 </html>

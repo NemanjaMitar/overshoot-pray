@@ -13,8 +13,8 @@ Usage:
     bundle   = get_ts_readings_24h(1)
 """
 
-from db import q
-from fetch_feeder import get_feeder_readings_24h
+from .db import q
+from .fetch_feeder import get_feeder_readings_24h
 import pandas as pd
 
 

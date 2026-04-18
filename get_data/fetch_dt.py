@@ -12,7 +12,7 @@ Usage:
     info = get_dt_info(335)                   # dict or None
 """
 
-from db import q
+from .db import q
 import pandas as pd
 
 

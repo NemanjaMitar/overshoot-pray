@@ -19,7 +19,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from fetch_feeder import get_feeder_readings_24h
+from .fetch_feeder import get_feeder_readings_24h
 
 
 # ─── config ──────────────────────────────────
