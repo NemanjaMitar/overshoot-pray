@@ -6,7 +6,7 @@ NO PNG, NO FILE OUTPUT, NO CLI LOGIC
 """
 
 import math
-from theft_detection import TheftDetector, ANALYSIS_HOURS, NTL_STATUSES
+from analysis.theft_detection import TheftDetector, ANALYSIS_HOURS, NTL_STATUSES
 
 
 def _clean(obj):

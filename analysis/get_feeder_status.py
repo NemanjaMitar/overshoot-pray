@@ -5,7 +5,7 @@ Single responsibility:
 NO PNG, NO FILE OUTPUT, NO CLI LOGIC
 """
 
-from theft_detection import (
+from analysis.theft_detection import (
     ANALYSIS_HOURS,
     FALLBACK_KVA_DT,
     FALLBACK_KVA_F11,
