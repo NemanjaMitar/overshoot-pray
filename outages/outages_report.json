@@ -1,0 +1,552 @@
+{
+  "analysis_days": 3,
+  "total_events": 78,
+  "outages": [
+    {
+      "feeder_name": "132KV KATAMPE TS_33KV WUSE II FDR_B5_2B",
+      "start": "2026-04-16 15:00:00",
+      "end": "2026-04-16 17:00:00",
+      "duration_minutes": 120,
+      "confidence_pct": 75.0
+    },
+    {
+      "feeder_name": "132KV KATAMPE 1 TS_33KV GWARINPA FDR_T1_LINE H",
+      "start": "2026-04-16 15:00:00",
+      "end": "2026-04-16 17:00:00",
+      "duration_minutes": 120,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV SULEJA TS_33KV JIWA FDR_JIWA_FD2 JIWA",
+      "start": "2026-04-16 14:30:00",
+      "end": "2026-04-16 16:30:00",
+      "duration_minutes": 120,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G22_4LEFT",
+      "start": "2026-04-16 13:30:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 150,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G22_5&8LEFT",
+      "start": "2026-04-16 13:30:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 150,
+      "confidence_pct": 94.7
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G24_FD5",
+      "start": "2026-04-16 13:30:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 150,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G24_FDR 23",
+      "start": "2026-04-16 13:30:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 150,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G25_FD2",
+      "start": "2026-04-16 13:30:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 150,
+      "confidence_pct": 95.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G24_FD25",
+      "start": "2026-04-16 13:30:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 150,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G24_FD6",
+      "start": "2026-04-16 13:30:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 150,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G25_FD3",
+      "start": "2026-04-16 13:30:00",
+      "end": "2026-04-16 16:30:00",
+      "duration_minutes": 180,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G25_FD7",
+      "start": "2026-04-16 13:30:00",
+      "end": "2026-04-16 16:30:00",
+      "duration_minutes": 180,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G25_FD5",
+      "start": "2026-04-16 13:30:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 150,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G22_2LEFT",
+      "start": "2026-04-16 13:00:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 180,
+      "confidence_pct": 95.5
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G24_FD2",
+      "start": "2026-04-16 13:00:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 180,
+      "confidence_pct": 75.0
+    },
+    {
+      "feeder_name": "132KV KUBWA TS_33KV NIPP FDR_NIPP_FDN2",
+      "start": "2026-04-16 13:00:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 180,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G25_FD23",
+      "start": "2026-04-16 13:00:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 180,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G24_FD21",
+      "start": "2026-04-16 13:00:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 180,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G25_FD21",
+      "start": "2026-04-16 13:00:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 180,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV CENTRAL AREA TS_ 33KV FDR 4_B33_4A",
+      "start": "2026-04-16 13:00:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 180,
+      "confidence_pct": 83.3
+    },
+    {
+      "feeder_name": "132KV CENTRAL AREA TS_33KV FDR 5_G2_5B",
+      "start": "2026-04-16 12:30:00",
+      "end": "2026-04-16 14:30:00",
+      "duration_minutes": 120,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV KUBWA TS_33KV NIPP FDR_NIPP_FDN1",
+      "start": "2026-04-16 12:30:00",
+      "end": "2026-04-16 15:30:00",
+      "duration_minutes": 180,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV CENTRAL AREA TS_33KV FDR 5_G2_7A",
+      "start": "2026-04-16 12:30:00",
+      "end": "2026-04-16 15:00:00",
+      "duration_minutes": 150,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV GWAGWALADA TS_33KV FDR L36_L2_FD2",
+      "start": "2026-04-16 12:30:00",
+      "end": "2026-04-16 15:30:00",
+      "duration_minutes": 180,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV KUKWABA TS_33KV FDR L34_B6_6B",
+      "start": "2026-04-16 12:30:00",
+      "end": "2026-04-16 15:30:00",
+      "duration_minutes": 180,
+      "confidence_pct": 91.7
+    },
+    {
+      "feeder_name": "132KV KATAMPE TS_33KV WUSE II FDR_B5_3A",
+      "start": "2026-04-16 12:00:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 240,
+      "confidence_pct": 92.3
+    },
+    {
+      "feeder_name": "132KV KATAMPE TS_33KV WUSE II FDR_B5_3B",
+      "start": "2026-04-16 12:00:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 240,
+      "confidence_pct": 72.6
+    },
+    {
+      "feeder_name": "132KV GWAGWALADA TS_33KV FDR L36_L2_FD1",
+      "start": "2026-04-16 12:00:00",
+      "end": "2026-04-16 15:00:00",
+      "duration_minutes": 180,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G22_1LEFT",
+      "start": "2026-04-16 11:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 120,
+      "confidence_pct": 95.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H37_S26_K10",
+      "start": "2026-04-16 11:30:00",
+      "end": "2026-04-16 14:30:00",
+      "duration_minutes": 180,
+      "confidence_pct": 92.3
+    },
+    {
+      "feeder_name": "132KV KATAMPE TS_33KV WUSE II FDR_B52_1B",
+      "start": "2026-04-16 11:00:00",
+      "end": "2026-04-16 13:00:00",
+      "duration_minutes": 120,
+      "confidence_pct": 50.0
+    },
+    {
+      "feeder_name": "132KV KATAMPE TS_33KV WUSE II FDR_B52_2A",
+      "start": "2026-04-16 11:00:00",
+      "end": "2026-04-16 13:00:00",
+      "duration_minutes": 120,
+      "confidence_pct": 90.9
+    },
+    {
+      "feeder_name": "132KV KATAMPE TS_33KV WUSE II FDR_B52_3B",
+      "start": "2026-04-16 11:00:00",
+      "end": "2026-04-16 13:00:00",
+      "duration_minutes": 120,
+      "confidence_pct": 72.4
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G22_7LEFT",
+      "start": "2026-04-16 11:00:00",
+      "end": "2026-04-16 16:30:00",
+      "duration_minutes": 330,
+      "confidence_pct": 92.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G22_2LEFT",
+      "start": "2026-04-16 10:30:00",
+      "end": "2026-04-16 12:30:00",
+      "duration_minutes": 120,
+      "confidence_pct": 95.5
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G22_4LEFT",
+      "start": "2026-04-16 10:30:00",
+      "end": "2026-04-16 12:30:00",
+      "duration_minutes": 120,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G22_5&8LEFT",
+      "start": "2026-04-16 10:30:00",
+      "end": "2026-04-16 12:30:00",
+      "duration_minutes": 120,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV KATAMPE TS_33KV WUSE II FDR_B5_1B",
+      "start": "2026-04-16 10:00:00",
+      "end": "2026-04-16 17:00:00",
+      "duration_minutes": 420,
+      "confidence_pct": 96.9
+    },
+    {
+      "feeder_name": "132KV KATAMPE TS_33KV WUSE II FDR_B5_4A",
+      "start": "2026-04-16 10:00:00",
+      "end": "2026-04-16 15:00:00",
+      "duration_minutes": 300,
+      "confidence_pct": 97.1
+    },
+    {
+      "feeder_name": "132KV KATAMPE TS_33KV WUSE II FDR_B52_2B",
+      "start": "2026-04-16 10:00:00",
+      "end": "2026-04-16 15:00:00",
+      "duration_minutes": 300,
+      "confidence_pct": 93.1
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H3_R5_4B",
+      "start": "2026-04-16 10:00:00",
+      "end": "2026-04-16 17:00:00",
+      "duration_minutes": 420,
+      "confidence_pct": 78.6
+    },
+    {
+      "feeder_name": "132KV GWAGWALADA TS_33KV FDR L36_L2_FD4",
+      "start": "2026-04-16 10:00:00",
+      "end": "2026-04-16 15:30:00",
+      "duration_minutes": 330,
+      "confidence_pct": 80.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H11_G4_7B",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 14:00:00",
+      "duration_minutes": 270,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV CENTRAL AREA TS_33KV FDR 5_G42_FDL1",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 390,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H11_G4_2A",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 240,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H11_G4_2B",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 240,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H11_G4_3B",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 240,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV KARU TS_33KV FDR K4_A23_FD2",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 390,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV KARU TS_33KV FDR K4_J22_FD2",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 390,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV GWAGWALADA TS_33KV FDR L35_L3_FD2",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 240,
+      "confidence_pct": 95.7
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H11_G4_1A",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 240,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H11_G4_8A",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 240,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H11_G4_5A",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 14:00:00",
+      "duration_minutes": 270,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H11_G4_6B",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 14:00:00",
+      "duration_minutes": 270,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV MINNA TS_33KV ZARUMAI FDR_ZARUMAI_DUTSEN KURA",
+      "start": "2026-04-16 09:30:00",
+      "end": "2026-04-16 12:30:00",
+      "duration_minutes": 180,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H11_G4_1B",
+      "start": "2026-04-16 09:00:00",
+      "end": "2026-04-16 14:00:00",
+      "duration_minutes": 300,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H5_R2_FD14",
+      "start": "2026-04-16 09:00:00",
+      "end": "2026-04-16 14:00:00",
+      "duration_minutes": 300,
+      "confidence_pct": 80.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H5_R2_FD7",
+      "start": "2026-04-16 09:00:00",
+      "end": "2026-04-16 16:00:00",
+      "duration_minutes": 420,
+      "confidence_pct": 90.9
+    },
+    {
+      "feeder_name": "132KV MINNA TS_33KV MAIKUNKELE FDR_MAIKUNKELE_AIRPORT",
+      "start": "2026-04-16 09:00:00",
+      "end": "2026-04-16 13:00:00",
+      "duration_minutes": 240,
+      "confidence_pct": 50.0
+    },
+    {
+      "feeder_name": "132KV KATAMPE TS_33KV WUSE II FDR_B5_2A",
+      "start": "2026-04-16 07:00:00",
+      "end": "2026-04-16 10:00:00",
+      "duration_minutes": 180,
+      "confidence_pct": 77.8
+    },
+    {
+      "feeder_name": "132KV KATAMPE TS_33KV WUSE II FDR_B5_3B",
+      "start": "2026-04-16 07:00:00",
+      "end": "2026-04-16 10:00:00",
+      "duration_minutes": 180,
+      "confidence_pct": 71.0
+    },
+    {
+      "feeder_name": "132KV SULEJA TS_33KV JIWA FDR_JIWA_FD2 JIWA",
+      "start": "2026-04-16 05:00:00",
+      "end": "2026-04-16 11:30:00",
+      "duration_minutes": 390,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H37_S26_TRADEMORE FD",
+      "start": "2026-04-16 04:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 540,
+      "confidence_pct": 98.0
+    },
+    {
+      "feeder_name": "132KV KUBWA TS_33KV DEIDEI FDR_MOPOL_FD1",
+      "start": "2026-04-16 04:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 540,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV SULEJA TS_33KV JIWA FDR_JIWA_FD3 GWAGWA",
+      "start": "2026-04-16 04:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 540,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV KUBWA TS_33KV DEIDEI FDR_MOPOL_FD3",
+      "start": "2026-04-16 04:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 540,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV GIS DAWAKI TS_33KV FDR D2_M42_K12",
+      "start": "2026-04-16 03:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 600,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV GIS DAWAKI TS_33KV FDR D2_M42_K6",
+      "start": "2026-04-16 03:30:00",
+      "end": "2026-04-16 15:30:00",
+      "duration_minutes": 720,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV GIS DAWAKI TS_33KV\u00a0FDR D2_M43_ADKAN",
+      "start": "2026-04-16 03:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 600,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV GIS DAWAKI TS_33KV FDR D2_M43_SETRACO",
+      "start": "2026-04-16 03:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 600,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H21_E2_FD22",
+      "start": "2026-04-16 03:30:00",
+      "end": "2026-04-16 13:30:00",
+      "duration_minutes": 600,
+      "confidence_pct": 92.6
+    },
+    {
+      "feeder_name": "132KV GWAGWALADA TS_33KV FDR L36_L2_FD4",
+      "start": "2026-04-16 03:30:00",
+      "end": "2026-04-16 06:30:00",
+      "duration_minutes": 180,
+      "confidence_pct": 80.0
+    },
+    {
+      "feeder_name": "132KV APO TS_33KV FDR H1_G22_2LEFT",
+      "start": "2026-04-16 03:00:00",
+      "end": "2026-04-16 09:00:00",
+      "duration_minutes": 360,
+      "confidence_pct": 95.5
+    },
+    {
+      "feeder_name": "132KV KUBWA TS_33KV KUBWA FDR_K2_FD1",
+      "start": "2026-04-16 03:00:00",
+      "end": "2026-04-16 09:00:00",
+      "duration_minutes": 360,
+      "confidence_pct": 95.7
+    },
+    {
+      "feeder_name": "132KV CENTRAL AREA TS_33KV FDR 3_B32_FD1",
+      "start": "2026-04-16 03:00:00",
+      "end": "2026-04-16 09:00:00",
+      "duration_minutes": 360,
+      "confidence_pct": 89.5
+    },
+    {
+      "feeder_name": "132KV CENTRAL AREA TS_33KV FDR 5_G2_5B",
+      "start": "2026-04-16 02:00:00",
+      "end": "2026-04-16 04:00:00",
+      "duration_minutes": 120,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV CENTRAL AREA TS_33KV FDR 5_G2_7A",
+      "start": "2026-04-16 02:00:00",
+      "end": "2026-04-16 04:00:00",
+      "duration_minutes": 120,
+      "confidence_pct": 100.0
+    },
+    {
+      "feeder_name": "132KV CENTRAL AREA TS_33KV FDR 5_G2_8B",
+      "start": "2026-04-16 02:00:00",
+      "end": "2026-04-16 16:30:00",
+      "duration_minutes": 870,
+      "confidence_pct": 87.5
+    }
+  ]
+}
