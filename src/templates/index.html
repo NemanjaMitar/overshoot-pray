@@ -16,7 +16,7 @@
       overflow: hidden;
     }
 
-    /* ── Sidebar ── */
+    /* ── Outage sidebar ── */
     #sidebar {
       position: fixed;
       left: 0; top: 0;
@@ -144,7 +144,7 @@
     }
     .layer-toggle label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
 
-    /* ── Clickable tooltip (kolega) ── */
+    /* ── Clickable tooltip ── */
     .clickable-tooltip {
       background: white;
       border: 1px solid #e5e7eb;
@@ -183,13 +183,117 @@
     #plot-container { min-height: 420px; }
     #loading-message { color: #4b5563; margin-bottom: 10px; }
     #error-message   { color: #b91c1c; margin-bottom: 10px; font-weight: 600; }
+
+    /* ── NTL panel (desna strana) ── */
+    #ntl-panel {
+      position: fixed;
+      right: -340px;
+      top: 0;
+      width: 320px;
+      height: 100vh;
+      background: white;
+      border-left: 1px solid #e5e7eb;
+      box-shadow: -4px 0 16px rgba(0,0,0,0.12);
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: right 0.25s ease;
+    }
+
+    #ntl-panel.open { right: 0; }
+
+    #ntl-panel-header {
+      padding: 12px 14px;
+      background: #7f1d1d;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    #ntl-panel-title {
+      font-size: 12px;
+      font-weight: bold;
+      line-height: 1.4;
+      flex: 1;
+    }
+
+    #ntl-panel-close {
+      border: none;
+      background: transparent;
+      color: white;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    }
+
+    #ntl-panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 14px;
+      font-size: 13px;
+    }
+
+    .ntl-stat {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .ntl-stat-label { color: #6b7280; font-size: 12px; }
+    .ntl-stat-value { font-weight: bold; font-size: 13px; color: #111827; text-align: right; }
+
+    .ntl-status-badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    .s-NTL_ALARM { background: #7f1d1d; color: #fca5a5; }
+    .s-NTL_HIGH  { background: #92400e; color: #fde68a; }
+    .s-NTL       { background: #78350f; color: #fcd34d; }
+    .s-WARNING   { background: #1e3a5f; color: #93c5fd; }
+    .s-NORMAL    { background: #14532d; color: #86efac; }
+    .s-other     { background: #374151; color: #d1d5db; }
+
+    .ntl-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #374151;
+      margin: 12px 0 6px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .ntl-dt-item {
+      padding: 6px 8px;
+      border-radius: 5px;
+      background: #f9fafb;
+      margin-bottom: 3px;
+      font-size: 11px;
+    }
+
+    .ntl-dt-item.suspicious {
+      background: #fef2f2;
+      border-left: 3px solid #ef4444;
+    }
+
+    .ntl-dt-name { font-weight: 600; color: #111827; margin-bottom: 1px; }
+    .ntl-dt-meta { color: #6b7280; }
   </style>
 </head>
 <body>
 
   <div id="map"></div>
 
-  <!-- Outage sidebar -->
+  <!-- Outage sidebar (lijevo) -->
   <div id="sidebar">
     <div id="sidebar-header">
       <h2>⚡ Nestanci struje</h2>
@@ -200,6 +304,17 @@
     </div>
     <div id="outage-list"></div>
     <div id="sidebar-footer">Klik na nestanak → prikaži na mapi</div>
+  </div>
+
+  <!-- NTL panel (desno) -->
+  <div id="ntl-panel">
+    <div id="ntl-panel-header">
+      <div id="ntl-panel-title">NTL analiza</div>
+      <button id="ntl-panel-close">&times;</button>
+    </div>
+    <div id="ntl-panel-body">
+      <p style="color:#9ca3af;font-size:12px;">Klikni na vod za analizu.</p>
+    </div>
   </div>
 
   <!-- Search -->
@@ -236,18 +351,14 @@
 
   <script>
     const svgRenderer = L.svg({ padding: 0.5 });
-
     const map = L.map('map').setView([9.08, 8.67], 6);
 
     map.createPane('linesPane');
     map.getPane('linesPane').style.zIndex = 390;
-
     map.createPane('dtPane');
     map.getPane('dtPane').style.zIndex = 400;
-
     map.createPane('ssPane');
     map.getPane('ssPane').style.zIndex = 401;
-
     map.createPane('tsPane');
     map.getPane('tsPane').style.zIndex = 402;
 
@@ -280,7 +391,7 @@
       distribution: { color: "#2ed573", radius: 7,  label: "Distribution (DT)", pane: "dtPane" },
     };
 
-    // ── Modal ─────────────────────────────────────────────────────────────
+    // ── Station modal ─────────────────────────────────────────────────────
     const modalEl           = document.getElementById('details-modal');
     const modalTitleEl      = document.getElementById('modal-title');
     const modalInfoEl       = document.getElementById('modal-info');
@@ -291,7 +402,6 @@
     const loadingMessageEl  = document.getElementById('loading-message');
     const errorMessageEl    = document.getElementById('error-message');
     const plotContainerEl   = document.getElementById('plot-container');
-
     let currentStationContext = null;
 
     function clearModalState() {
@@ -352,8 +462,7 @@
       feederSelectEl.innerHTML = '';
       if (!feeders || feeders.length === 0) {
         const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = 'Nema dostupnih feeder-a';
+        opt.value = ''; opt.textContent = 'Nema dostupnih feeder-a';
         feederSelectEl.appendChild(opt);
         return;
       }
@@ -416,6 +525,104 @@
     modalCloseBtn.addEventListener('click', closeModal);
     modalEl.addEventListener('click', (e) => { if (e.target === modalEl) closeModal(); });
 
+    // ── NTL panel ─────────────────────────────────────────────────────────
+    const ntlPanel      = document.getElementById('ntl-panel');
+    const ntlPanelTitle = document.getElementById('ntl-panel-title');
+    const ntlPanelBody  = document.getElementById('ntl-panel-body');
+
+    document.getElementById('ntl-panel-close').addEventListener('click', () => {
+      ntlPanel.classList.remove('open');
+    });
+
+    function statusBadge(status) {
+      const cls = ['NTL_ALARM','NTL_HIGH','NTL','WARNING','NORMAL'].includes(status)
+        ? `s-${status}` : 's-other';
+      return `<span class="ntl-status-badge ${cls}">${status}</span>`;
+    }
+
+    async function openNtlPanel(feederId, feederTip, feederName) {
+      // feederTip je "feeder11" ili "feeder33" — konvertujemo u "f11"/"f33"
+      const level = feederTip === 'feeder11' ? 'f11' : 'f33';
+
+      ntlPanelTitle.textContent = feederName || 'NTL analiza';
+      ntlPanelBody.innerHTML = '<p style="color:#9ca3af;font-size:12px;padding:8px 0;">Učitavam...</p>';
+      ntlPanel.classList.add('open');
+
+      try {
+        const res  = await fetch(`/api/feeder-status/${level}/${feederId}`);
+        const d    = await res.json();
+
+        if (!res.ok) {
+          ntlPanelBody.innerHTML = `<p style="color:#b91c1c;padding:8px 0;">${d.error || 'Greška'}</p>`;
+          return;
+        }
+
+        const pct  = d.loss_pct    != null ? `${d.loss_pct}%` : 'N/A';
+        const kwh  = d.loss_kwh    != null ? `${Number(d.loss_kwh).toLocaleString()} kWh` : 'N/A';
+        const inp  = d.input_kwh   != null ? `${Number(d.input_kwh).toLocaleString()} kWh` : 'N/A';
+        const cov  = d.coverage    != null ? `${(d.coverage * 100).toFixed(0)}%` : 'N/A';
+
+        let html = `
+          <div class="ntl-stat">
+            <span class="ntl-stat-label">Status</span>
+            <span>${statusBadge(d.status)}</span>
+          </div>
+          <div class="ntl-stat">
+            <span class="ntl-stat-label">Pouzdanost</span>
+            <span class="ntl-stat-value">${d.confidence}</span>
+          </div>
+          <div class="ntl-stat">
+            <span class="ntl-stat-label">Ulaz (7d)</span>
+            <span class="ntl-stat-value">${inp}</span>
+          </div>
+          <div class="ntl-stat">
+            <span class="ntl-stat-label">Gubitak</span>
+            <span class="ntl-stat-value" style="color:#ef4444">${pct} · ${kwh}</span>
+          </div>
+          <div class="ntl-stat">
+            <span class="ntl-stat-label">Pokrivenost</span>
+            <span class="ntl-stat-value">${cov}</span>
+          </div>`;
+
+        // F11 → DT profili
+        if (d.dt_profiles && d.dt_profiles.length > 0) {
+          const susp = d.dt_profiles.filter(x => x.suspicious);
+          html += `<div class="ntl-section-title">DT mjerači — ${d.dt_measured}/${d.dt_count}
+            ${susp.length ? `<span style="color:#ef4444">(${susp.length} ⚠)</span>` : ''}</div>`;
+
+          d.dt_profiles
+            .sort((a, b) => b.suspicious - a.suspicious || a.load_factor - b.load_factor)
+            .slice(0, 25)
+            .forEach(dt => {
+              html += `<div class="ntl-dt-item ${dt.suspicious ? 'suspicious' : ''}">
+                <div class="ntl-dt-name">${dt.name}</div>
+                <div class="ntl-dt-meta">${dt.kwh_7d > 0
+                  ? `${Number(dt.kwh_7d).toLocaleString()} kWh`
+                  : 'Nema podataka'}${dt.suspicious ? ' · <b style="color:#ef4444">Sumnjivo</b>' : ''}</div>
+              </div>`;
+            });
+          if (d.dt_profiles.length > 25)
+            html += `<div style="font-size:11px;color:#9ca3af;padding:4px 0;">+${d.dt_profiles.length - 25} više...</div>`;
+        }
+
+        // F33 → F11 profili
+        if (d.f11_profiles && d.f11_profiles.length > 0) {
+          html += `<div class="ntl-section-title">F11 feederi — ${d.f11_measured}/${d.f11_count}</div>`;
+          d.f11_profiles.forEach(f => {
+            html += `<div class="ntl-dt-item">
+              <div class="ntl-dt-name">${f.name}</div>
+              <div class="ntl-dt-meta">${f.kwh_7d > 0 ? `${Number(f.kwh_7d).toLocaleString()} kWh` : 'Nema podataka'}</div>
+            </div>`;
+          });
+        }
+
+        ntlPanelBody.innerHTML = html;
+
+      } catch(e) {
+        ntlPanelBody.innerHTML = `<p style="color:#b91c1c;padding:8px 0;">Greška: ${e.message}</p>`;
+      }
+    }
+
     // ── Map state ─────────────────────────────────────────────────────────
     let allFeatures              = [];
     const featureMarkers         = {};
@@ -427,14 +634,32 @@
     const lineLayerByName        = {};
     const feederStationKeys      = {};
 
+    // NTL: normalized feeder name → {id, tip}
+    const ntlRedFeeders = {};   // normName → {id, tip, status, loss_pct}
+
     function normalizeName(s) {
       return (s || "").toLowerCase().replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
     }
 
+    function lineColorForFeeder(tip, normName) {
+      if (normName && ntlRedFeeders[normName]) return "#ef4444";
+      return getLineColor(tip);
+    }
+
+    function lineWeightForFeeder(tip, normName) {
+      if (normName && ntlRedFeeders[normName]) return getLineWeight(tip) + 1;
+      return getLineWeight(tip);
+    }
+
     function resetAllLines() {
       allLineLeafletLayers.forEach((layer) => {
-        const tip = layer.feature?.properties?.tip;
-        layer.setStyle({ color: getLineColor(tip), weight: getLineWeight(tip), opacity: 0.75 });
+        const tip  = layer.feature?.properties?.tip;
+        const norm = normalizeName(layer.feature?.properties?.naziv || "");
+        layer.setStyle({
+          color:   lineColorForFeeder(tip, norm),
+          weight:  lineWeightForFeeder(tip, norm),
+          opacity: 0.85
+        });
       });
     }
 
@@ -500,6 +725,7 @@
     map.on('click', function() {
       clearOutageHighlight();
       resetSelectedLine();
+      ntlPanel.classList.remove('open');
     });
 
     // ── Outage highlight ──────────────────────────────────────────────────
@@ -535,6 +761,7 @@
       });
 
       try {
+        group.addTo(map);
         const bounds = group.getBounds();
         if (bounds.isValid()) map.fitBounds(bounds, { padding: [60, 60], maxZoom: 12 });
       } catch(e) {}
@@ -547,7 +774,9 @@
         data.features.forEach(feature => {
           const tip         = feature.properties.tip;
           const naziv       = feature.properties.naziv || "";
+          const feederId    = feature.properties.id;
           const stationKeys = feature.properties.station_keys || [];
+          const normKey     = normalizeName(naziv);
           const color       = getLineColor(tip);
           const weight      = getLineWeight(tip);
           const group       = L.layerGroup();
@@ -557,6 +786,10 @@
             style: { color, weight, opacity: 0.75 },
             onEachFeature: function(f, l) {
               l.stationKeys = f.properties.station_keys || [];
+              l._feederId   = feederId;
+              l._feederTip  = tip;
+              l._feederName = naziv;
+              l._normKey    = normKey;
               allLineLeafletLayers.push(l);
 
               l.bindPopup(`
@@ -565,26 +798,29 @@
                   <strong>${naziv || "Nepoznat vod"}</strong><br>
                   Povezanih čvorova: ${f.properties.children_count || 0}
                   ${f.properties.nameplate_rating ? `<br>Rating: ${f.properties.nameplate_rating}` : ""}
+                  ${ntlRedFeeders[normKey] ? `<br><span style="color:#ef4444;font-weight:bold">⚠ NTL: ${ntlRedFeeders[normKey].loss_pct}%</span>` : ""}
                 </div>`);
 
               l.on('mouseover', function() {
                 if (selectedLineLayer !== l && !activeOutageLayer)
-                  l.setStyle({ weight: getLineWeight(tip) + 1, opacity: 0.95 });
+                  l.setStyle({ weight: lineWeightForFeeder(tip, normKey) + 1, opacity: 0.95 });
               });
               l.on('mouseout', function() {
                 if (selectedLineLayer !== l && !activeOutageLayer)
-                  l.setStyle({ weight: getLineWeight(tip), opacity: 0.75 });
+                  l.setStyle({ color: lineColorForFeeder(tip, normKey),
+                    weight: lineWeightForFeeder(tip, normKey), opacity: 0.85 });
               });
               l.on('click', function(e) {
                 L.DomEvent.stopPropagation(e);
                 clearOutageHighlight();
                 focusOnLine(l);
                 map.fitBounds(l.getBounds(), { padding: [30, 30] });
+                // Otvori NTL panel za ovaj feeder
+                openNtlPanel(feederId, tip, naziv);
               });
             }
           }).addTo(group);
 
-          const normKey = normalizeName(naziv);
           if (normKey) {
             lineLayerByName[normKey]   = group;
             feederStationKeys[normKey] = stationKeys;
@@ -595,6 +831,24 @@
         lineLayers.feeder33.addTo(map);
         lineLayers.feeder11.addTo(map);
         loadOutages();
+
+        // Učitaj NTL feedere i oboji ih crveno
+        fetch('/data/ntl-feeders')
+          .then(r => r.json())
+          .then(ntlData => {
+            (ntlData.red_feeders || []).forEach(rf => {
+              const norm = normalizeName(rf.feeder_name);
+              ntlRedFeeders[norm] = {
+                id:       rf.id,
+                tip:      rf.level === 'F11' ? 'feeder11' : 'feeder33',
+                status:   rf.status,
+                loss_pct: rf.loss_pct
+              };
+            });
+            // Oboji sve crvene feedere
+            resetAllLines();
+          })
+          .catch(() => {}); // tiho ako endpoint nije dostupan
       });
 
     // ── Trafostanice ──────────────────────────────────────────────────────
@@ -634,14 +888,12 @@
             await openStationAnalysis(tip, stationId, naziv);
           });
 
-          // Klikabilni tooltip (iz koleguinog koda)
           const tipLabel = tip === 'transmission' ? 'TS' : tip === 'substation' ? 'SS' : 'DT';
           const tooltipNode = document.createElement('div');
           tooltipNode.style.cssText = 'display:flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap;';
           tooltipNode.innerHTML = `
             <span style="background:${color};color:white;font-size:10px;font-weight:bold;padding:1px 5px;border-radius:3px;">${tipLabel}</span>
-            <span style="font-size:13px;font-weight:600;color:#111827;text-decoration:underline;text-decoration-color:#9ca3af;">${naziv}</span>
-          `;
+            <span style="font-size:13px;font-weight:600;color:#111827;text-decoration:underline;text-decoration-color:#9ca3af;">${naziv}</span>`;
           tooltipNode.addEventListener('click', (e) => {
             e.stopPropagation();
             openStationAnalysis(tip, stationId, naziv);
@@ -665,7 +917,6 @@
         layers.substation.addTo(map);
         buildLegend(counts, layers);
 
-        // DT vidljivi od zoom 8 zbog performansi
         let dtLayerRef = layers.distribution;
         let dtEnabled  = true;
 
@@ -702,8 +953,11 @@
           <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
             <span style="width:16px;height:0;border-top:3px solid #00b894;display:inline-block;"></span> Feeder 11kV
           </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+            <span style="width:16px;height:0;border-top:3px solid #ef4444;display:inline-block;"></span> NTL (krađa)
+          </div>
           <div style="margin-top:8px;color:#6b7280;font-size:12px;">
-            Hover na stanicu za klik. Klik na stanicu ili tooltip za analizu.
+            Hover na stanicu za klik. Klik na vod za NTL analizu.
           </div>`;
         return div;
       };
@@ -797,7 +1051,7 @@
         : allOutages);
     });
 
-    // ── Search (koleguina verzija sa dropdown) ────────────────────────────
+    // ── Search ────────────────────────────────────────────────────────────
     function openSearchResult(idx) {
       const f       = allFeatures[idx];
       const tip     = f.properties.tip;

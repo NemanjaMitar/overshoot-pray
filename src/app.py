@@ -24,6 +24,9 @@ from get_data.plot_station import plot_station
 from get_data.fetch_ts import get_ts_feeders
 from get_data.fetch_ss import get_ss_feeders
 from outages.get_system_outages import get_system_outages_optimized
+from analysis.get_red_feeders import get_ntl_feeders
+from analysis.get_feeder_status import get_feeder_status
+
 
 app = Flask(__name__)
 
@@ -454,6 +457,26 @@ def data_outages():
         _outages_cache["data"] = get_system_outages_optimized(days=3)
         _outages_cache["ts"]   = time.time()
     return jsonify(_outages_cache["data"])
+
+_ntl_cache = {"data": None, "ts": 0}
+
+@app.route("/data/ntl-feeders")
+def data_ntl_feeders():
+    global _ntl_cache
+    if time.time() - _ntl_cache["ts"] > 86400:
+        _ntl_cache["data"] = get_ntl_feeders()
+        _ntl_cache["ts"]   = time.time()
+    return jsonify(_ntl_cache["data"])
+
+@app.route("/api/feeder-status/<level>/<int:feeder_id>")
+def feeder_status(level, feeder_id):
+    try:
+        result = get_feeder_status(feeder_id, level)
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
