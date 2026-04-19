@@ -1,5 +1,8 @@
+import sys, os
+# Dodaje parent folder (overshoot-pray/) u path
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+
 from flask import Flask, render_template, jsonify, request
-import os
 import math
 import json
 from plotly.utils import PlotlyJSONEncoder

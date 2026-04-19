@@ -33,9 +33,7 @@
       font-size: 13px;
     }
 
-    .legend b {
-      font-size: 13px;
-    }
+    .legend b { font-size: 13px; }
 
     .legend i {
       width: 14px;
@@ -103,9 +101,7 @@
       cursor: pointer;
     }
 
-    .modal-body {
-      font-size: 14px;
-    }
+    .modal-body { font-size: 14px; }
 
     .control-row {
       display: flex;
@@ -129,9 +125,7 @@
       background: #f9fafb;
     }
 
-    #plot-container {
-      min-height: 420px;
-    }
+    #plot-container { min-height: 420px; }
 
     #loading-message {
       color: #4b5563;
@@ -143,6 +137,24 @@
       margin-bottom: 10px;
       font-weight: 600;
     }
+
+    /* Klikabilni tooltip */
+    .clickable-tooltip {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 5px 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      pointer-events: auto !important;
+    }
+
+    .clickable-tooltip::before {
+      border-top-color: #e5e7eb !important;
+    }
+
+    .leaflet-tooltip {
+      pointer-events: auto !important;
+    }
   </style>
 </head>
 <body>
@@ -152,7 +164,7 @@
     position: fixed;
     top: 20px;
     left: 50px;
-    z-index:1001;
+    z-index: 1001;
   ">
     <div style="
       padding: 8px 10px;
@@ -162,6 +174,7 @@
       display: flex;
       gap: 6px;
       align-items: center;
+      position: relative;
     ">
       <input
         id="search-input"
@@ -190,7 +203,6 @@
           <select id="feeder-select"></select>
           <button id="load-plot-btn" type="button">Prikaži graf</button>
         </div>
-
         <div id="loading-message" style="display:none;">Učitavanje...</div>
         <div id="error-message" style="display:none;"></div>
         <div id="modal-info" style="font-size:13px;color:#4b5563;margin-bottom:12px;"></div>
@@ -269,9 +281,7 @@
       plotContainerEl.innerHTML = '';
     }
 
-    function openModal() {
-      modalEl.style.display = 'flex';
-    }
+    function openModal() { modalEl.style.display = 'flex'; }
 
     function closeModal() {
       modalEl.style.display = 'none';
@@ -299,9 +309,7 @@
     async function fetchStationOptions(stationType, stationId) {
       const res = await fetch(`/api/station-options/${stationType}/${stationId}`);
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Greška pri učitavanju feeder opcija');
-      }
+      if (!res.ok) throw new Error(data.error || 'Greška pri učitavanju feeder opcija');
       return data;
     }
 
@@ -310,12 +318,9 @@
       if (feederId !== null && feederId !== undefined) {
         url += `?feeder_id=${encodeURIComponent(feederId)}`;
       }
-
       const res = await fetch(url);
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Greška pri učitavanju grafa');
-      }
+      if (!res.ok) throw new Error(data.error || 'Greška pri učitavanju grafa');
       return data;
     }
 
@@ -324,7 +329,6 @@
       const plotDiv = document.createElement('div');
       plotDiv.id = 'station-plotly-div';
       plotContainerEl.appendChild(plotDiv);
-
       Plotly.newPlot(plotDiv, figure.data, figure.layout, {
         responsive: true,
         displaylogo: false
@@ -333,7 +337,6 @@
 
     function populateFeederDropdown(feeders) {
       feederSelectEl.innerHTML = '';
-
       if (!feeders || feeders.length === 0) {
         const opt = document.createElement('option');
         opt.value = '';
@@ -341,33 +344,23 @@
         feederSelectEl.appendChild(opt);
         return;
       }
-
       feeders.forEach((f) => {
         const opt = document.createElement('option');
         opt.value = String(f.id);
-
         let label = `${f.name} [${f.role}]`;
-        if (!f.has_readings) {
-          label += ' - nema očitanja';
-        }
-
+        if (!f.has_readings) label += ' - nema očitanja';
         opt.textContent = label;
         opt.disabled = !f.has_readings;
         feederSelectEl.appendChild(opt);
       });
-
       const firstEnabled = Array.from(feederSelectEl.options).find(o => !o.disabled);
-      if (firstEnabled) {
-        feederSelectEl.value = firstEnabled.value;
-      }
+      if (firstEnabled) feederSelectEl.value = firstEnabled.value;
     }
 
     async function loadPlotForCurrentSelection() {
       if (!currentStationContext) return;
-
       const { stationType, stationId } = currentStationContext;
       const feederId = feederSelectEl.value ? parseInt(feederSelectEl.value, 10) : null;
-
       try {
         setError('');
         setLoading(true, 'Generišem graf...');
@@ -429,19 +422,13 @@
 
     modalCloseBtn.addEventListener('click', closeModal);
     modalEl.addEventListener('click', (e) => {
-      if (e.target === modalEl) {
-        closeModal();
-      }
+      if (e.target === modalEl) closeModal();
     });
 
     function resetAllLines() {
       allLineLeafletLayers.forEach((layer) => {
         const tip = layer.feature?.properties?.tip;
-        layer.setStyle({
-          color: getLineColor(tip),
-          weight: getLineWeight(tip),
-          opacity: 0.75
-        });
+        layer.setStyle({ color: getLineColor(tip), weight: getLineWeight(tip), opacity: 0.75 });
       });
     }
 
@@ -449,7 +436,6 @@
       Object.entries(markersByStationKey).forEach(([stationKey, marker]) => {
         const baseStyle = defaultMarkerStyleByStationKey[stationKey];
         if (!baseStyle) return;
-
         marker.setStyle({
           radius: baseStyle.radius,
           fillColor: baseStyle.fillColor,
@@ -468,57 +454,30 @@
     }
 
     function bringLineToFront(layer) {
-      if (layer && typeof layer.bringToFront === 'function') {
-        layer.bringToFront();
-      }
+      if (layer && typeof layer.bringToFront === 'function') layer.bringToFront();
     }
 
     function dimAllLinesExcept(activeLayer) {
       allLineLeafletLayers.forEach((layer) => {
         const tip = layer.feature?.properties?.tip;
-
         if (layer === activeLayer) {
-          layer.setStyle({
-            color: getLineColor(tip),
-            weight: getLineWeight(tip) + 5,
-            opacity: 1
-          });
+          layer.setStyle({ color: getLineColor(tip), weight: getLineWeight(tip) + 5, opacity: 1 });
           bringLineToFront(layer);
         } else {
-          layer.setStyle({
-            color: "#c7cdd4",
-            weight: Math.max(1, getLineWeight(tip) - 0.3),
-            opacity: 0.08
-          });
+          layer.setStyle({ color: "#c7cdd4", weight: Math.max(1, getLineWeight(tip) - 0.3), opacity: 0.08 });
         }
       });
     }
 
     function dimStationsExcept(stationKeysToKeep) {
       const keepSet = new Set(stationKeysToKeep || []);
-
       Object.entries(markersByStationKey).forEach(([stationKey, marker]) => {
         const baseStyle = defaultMarkerStyleByStationKey[stationKey];
         if (!baseStyle) return;
-
         if (keepSet.has(stationKey)) {
-          marker.setStyle({
-            radius: baseStyle.radius + 1,
-            fillColor: baseStyle.fillColor,
-            color: "#111827",
-            weight: 3,
-            fillOpacity: 1,
-            opacity: 1
-          });
+          marker.setStyle({ radius: baseStyle.radius + 1, fillColor: baseStyle.fillColor, color: "#111827", weight: 3, fillOpacity: 1, opacity: 1 });
         } else {
-          marker.setStyle({
-            radius: baseStyle.radius,
-            fillColor: "#d1d5db",
-            color: "#b0b7c3",
-            weight: 1,
-            fillOpacity: 0.12,
-            opacity: 0.18
-          });
+          marker.setStyle({ radius: baseStyle.radius, fillColor: "#d1d5db", color: "#b0b7c3", weight: 1, fillOpacity: 0.12, opacity: 0.18 });
         }
       });
     }
@@ -529,9 +488,7 @@
       dimStationsExcept(layer.stationKeys || []);
     }
 
-    map.on('click', function () {
-      resetSelectedLine();
-    });
+    map.on('click', function () { resetSelectedLine(); });
 
     fetch("/data/vodovi")
       .then(res => res.json())
@@ -543,11 +500,7 @@
 
           const layer = L.geoJSON(feature, {
             pane: 'linesPane',
-            style: {
-              color: color,
-              weight: weight,
-              opacity: 0.75
-            },
+            style: { color, weight, opacity: 0.75 },
             onEachFeature: function (f, l) {
               l.stationKeys = f.properties.station_keys || [];
               allLineLeafletLayers.push(l);
@@ -562,37 +515,20 @@
               `);
 
               l.on('mouseover', function () {
-                if (selectedLineLayer !== l) {
-                  l.setStyle({
-                    weight: getLineWeight(tip) + 1,
-                    opacity: 0.95
-                  });
-                }
+                if (selectedLineLayer !== l) l.setStyle({ weight: getLineWeight(tip) + 1, opacity: 0.95 });
               });
-
               l.on('mouseout', function () {
-                if (selectedLineLayer !== l) {
-                  l.setStyle({
-                    weight: getLineWeight(tip),
-                    opacity: 0.75
-                  });
-                }
+                if (selectedLineLayer !== l) l.setStyle({ weight: getLineWeight(tip), opacity: 0.75 });
               });
-
               l.on('click', function (e) {
                 L.DomEvent.stopPropagation(e);
                 focusOnLine(l);
-
-                map.fitBounds(l.getBounds(), {
-                  padding: [30, 30]
-                });
+                map.fitBounds(l.getBounds(), { padding: [30, 30] });
               });
             }
           });
 
-          if (lineLayers[tip]) {
-            lineLayers[tip].addLayer(layer);
-          }
+          if (lineLayers[tip]) lineLayers[tip].addLayer(layer);
         });
 
         lineLayers.feeder33.addTo(map);
@@ -635,7 +571,6 @@
 
           const r = sizeConfig[tip] || 8;
           const color = colors[tip] || "#ffa502";
-
           const lat = f.geometry.coordinates[1];
           const lon = f.geometry.coordinates[0];
 
@@ -655,10 +590,41 @@
             await openStationAnalysis(tip, stationId, f.properties.naziv);
           });
 
-          marker.bindTooltip(`${f.properties.naziv}`, {
-            direction: 'top',
-            offset: [0, -6]
+          // ── Klikabilni tooltip ──────────────────────────────────────────
+          const tipLabel = tip === 'transmission' ? 'TS' : tip === 'substation' ? 'SS' : 'DT';
+
+          const tooltipNode = document.createElement('div');
+          tooltipNode.style.cssText = 'display:flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap;';
+          tooltipNode.innerHTML = `
+            <span style="
+              background:${color};
+              color:white;
+              font-size:10px;
+              font-weight:bold;
+              padding:1px 5px;
+              border-radius:3px;
+            ">${tipLabel}</span>
+            <span style="
+              font-size:13px;
+              font-weight:600;
+              color:#111827;
+              text-decoration:underline;
+              text-decoration-color:#9ca3af;
+            ">${f.properties.naziv || 'Nepoznato'}</span>
+          `;
+
+          tooltipNode.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openStationAnalysis(tip, stationId, f.properties.naziv);
           });
+
+          marker.bindTooltip(tooltipNode, {
+            direction: 'top',
+            offset: [0, -6],
+            opacity: 1,
+            className: 'clickable-tooltip'
+          });
+          // ───────────────────────────────────────────────────────────────
 
           layers[tip].addLayer(marker);
           featureMarkers[idx] = marker;
@@ -707,10 +673,9 @@
               Feeder 11kV
             </div>
             <div style="margin-top:8px;color:#6b7280;font-size:12px;">
-              Klik na vod za fokus. Klik na stanicu za analizu.
+              Hover na stanicu za klik. Klik na stanicu ili tooltip za analizu.
             </div>
           `;
-
           return div;
         };
         legend.addTo(map);
@@ -718,98 +683,176 @@
         const toggle = L.control({ position: 'topright' });
         toggle.onAdd = function () {
           const div = L.DomUtil.create('div', 'layer-toggle');
-          div.innerHTML = '<b>Prikaz slojeva</b><br>';
-
-          div.innerHTML += `
-            <label>
-              <input type="checkbox" id="chk-transmission" checked />
-              Transmission
-            </label>
-            <label>
-              <input type="checkbox" id="chk-substation" checked />
-              Substation
-            </label>
-            <label>
-              <input type="checkbox" id="chk-distribution" checked />
-              Distribution
-            </label>
-            <label>
-              <input type="checkbox" id="chk-feeder33" checked />
-              Feeder 33kV
-            </label>
-            <label>
-              <input type="checkbox" id="chk-feeder11" checked />
-              Feeder 11kV
-            </label>
+          div.innerHTML = `
+            <b>Prikaz slojeva</b><br>
+            <label><input type="checkbox" id="chk-transmission" checked /> Transmission</label>
+            <label><input type="checkbox" id="chk-substation" checked /> Substation</label>
+            <label><input type="checkbox" id="chk-distribution" checked /> Distribution</label>
+            <label><input type="checkbox" id="chk-feeder33" checked /> Feeder 33kV</label>
+            <label><input type="checkbox" id="chk-feeder11" checked /> Feeder 11kV</label>
           `;
-
           L.DomEvent.disableClickPropagation(div);
           return div;
         };
         toggle.addTo(map);
 
         document.getElementById('chk-transmission').addEventListener('change', (e) => {
-          if (e.target.checked) map.addLayer(layers.transmission);
-          else map.removeLayer(layers.transmission);
+          if (e.target.checked) map.addLayer(layers.transmission); else map.removeLayer(layers.transmission);
         });
-
         document.getElementById('chk-substation').addEventListener('change', (e) => {
-          if (e.target.checked) map.addLayer(layers.substation);
-          else map.removeLayer(layers.substation);
+          if (e.target.checked) map.addLayer(layers.substation); else map.removeLayer(layers.substation);
         });
-
         document.getElementById('chk-distribution').addEventListener('change', (e) => {
-          if (e.target.checked) map.addLayer(layers.distribution);
-          else map.removeLayer(layers.distribution);
+          if (e.target.checked) map.addLayer(layers.distribution); else map.removeLayer(layers.distribution);
         });
-
         document.getElementById('chk-feeder33').addEventListener('change', (e) => {
-          if (e.target.checked) map.addLayer(lineLayers.feeder33);
-          else map.removeLayer(lineLayers.feeder33);
+          if (e.target.checked) map.addLayer(lineLayers.feeder33); else map.removeLayer(lineLayers.feeder33);
         });
-
         document.getElementById('chk-feeder11').addEventListener('change', (e) => {
-          if (e.target.checked) map.addLayer(lineLayers.feeder11);
-          else map.removeLayer(lineLayers.feeder11);
+          if (e.target.checked) map.addLayer(lineLayers.feeder11); else map.removeLayer(lineLayers.feeder11);
         });
       })
       .catch(err => console.error("Greška pri učitavanju stanica:", err));
 
+    // ── Search ────────────────────────────────────────────────────────────────
     function searchStationByName() {
       const input = document.getElementById('search-input');
       const query = input.value.trim().toLowerCase();
       if (!query) return;
 
-      let foundIdx = null;
+      const results = [];
       for (let i = 0; i < allFeatures.length; i++) {
         const name = (allFeatures[i].properties.naziv || '').toLowerCase();
-        if (name.includes(query)) {
-          foundIdx = i;
-          break;
-        }
+        if (name.includes(query)) results.push(i);
       }
 
-      if (foundIdx === null) {
+      if (results.length === 0) {
         alert(`Nema stanice koja sadrži: "${query}"`);
         return;
       }
 
-      const f = allFeatures[foundIdx];
+      if (results.length === 1) {
+        openSearchResult(results[0]);
+        return;
+      }
+
+      showSearchResults(results);
+    }
+
+    function openSearchResult(idx) {
+      const f = allFeatures[idx];
+      const tip = f.properties.tip;
+      const stationId = f.properties.id;
+      const naziv = f.properties.naziv || 'Stanica';
       const lat = f.geometry.coordinates[1];
       const lon = f.geometry.coordinates[0];
+      const marker = featureMarkers[idx];
 
-      const marker = featureMarkers[foundIdx];
+      hideSearchResults();
+
       if (marker) {
-        map.flyTo([lat, lon], 10, { animate: true, duration: 1.0 });
-        marker.openTooltip();
+        map.flyTo([lat, lon], 12, { animate: true, duration: 1.0 });
+        setTimeout(() => {
+          const tipColors = { transmission: "#ff4757", substation: "#3742fa", distribution: "#2ed573" };
+          const color = tipColors[tip] || "#636e72";
+          const tipLabel = tip === 'transmission' ? 'TS' : tip === 'substation' ? 'SS' : 'DT';
+
+          const popupContent = document.createElement('div');
+          popupContent.style.cssText = 'text-align:center; min-width:140px;';
+
+          const typeLabel = document.createElement('div');
+          typeLabel.textContent = tipLabel;
+          typeLabel.style.cssText = `font-size:11px; color:${color}; font-weight:bold; margin-bottom:4px;`;
+
+          const nameLink = document.createElement('a');
+          nameLink.href = '#';
+          nameLink.textContent = naziv;
+          nameLink.style.cssText = `font-weight:bold; font-size:14px; color:#111827; text-decoration:underline; cursor:pointer; display:block;`;
+
+          const hint = document.createElement('div');
+          hint.textContent = 'Klikni za analizu';
+          hint.style.cssText = 'font-size:11px; color:#6b7280; margin-top:4px;';
+
+          nameLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            marker.closePopup();
+            openStationAnalysis(tip, stationId, naziv);
+          });
+
+          popupContent.appendChild(typeLabel);
+          popupContent.appendChild(nameLink);
+          popupContent.appendChild(hint);
+
+          marker.bindPopup(popupContent, { offset: [0, -8] }).openPopup();
+        }, 1100);
       }
     }
 
+    function showSearchResults(indices) {
+      hideSearchResults();
+
+      const dropdown = document.createElement('div');
+      dropdown.id = 'search-results-dropdown';
+      dropdown.style.cssText = `
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        max-height: 260px;
+        overflow-y: auto;
+        z-index: 1002;
+        margin-top: 4px;
+      `;
+
+      const tipColors = { transmission: "#ff4757", substation: "#3742fa", distribution: "#2ed573" };
+
+      indices.forEach((idx) => {
+        const f = allFeatures[idx];
+        const naziv = f.properties.naziv || 'Nepoznato';
+        const tip = f.properties.tip;
+        const color = tipColors[tip] || "#636e72";
+        const tipLabel = tip === 'transmission' ? 'TS' : tip === 'substation' ? 'SS' : 'DT';
+
+        const item = document.createElement('div');
+        item.style.cssText = `
+          padding: 8px 12px;
+          cursor: pointer;
+          border-bottom: 1px solid #f3f4f6;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+        `;
+        item.innerHTML = `
+          <span style="background:${color};color:white;font-size:10px;font-weight:bold;padding:1px 5px;border-radius:3px;min-width:28px;text-align:center;">${tipLabel}</span>
+          <span>${naziv}</span>
+        `;
+        item.addEventListener('mouseenter', () => item.style.background = '#f9fafb');
+        item.addEventListener('mouseleave', () => item.style.background = 'white');
+        item.addEventListener('click', () => openSearchResult(idx));
+        dropdown.appendChild(item);
+      });
+
+      const searchInner = document.getElementById('search-container').firstElementChild;
+      searchInner.appendChild(dropdown);
+    }
+
+    function hideSearchResults() {
+      const existing = document.getElementById('search-results-dropdown');
+      if (existing) existing.remove();
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#search-container')) hideSearchResults();
+    });
+
     document.getElementById('search-btn').addEventListener('click', searchStationByName);
     document.getElementById('search-input').addEventListener('keyup', (e) => {
-      if (e.key === 'Enter') {
-        searchStationByName();
-      }
+      if (e.key === 'Enter') searchStationByName();
     });
   </script>
 </body>
