@@ -22,3 +22,5 @@ __pycache__/
 
 # Logs
 *.logvenv/
+__pycache__/
+*.pyc
