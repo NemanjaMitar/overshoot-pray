@@ -7,174 +7,184 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     html, body {
       height: 100%;
-      margin: 0;
-      padding: 0;
-      background: #f3f4f6;
       font-family: Arial, sans-serif;
+      background: #f3f4f6;
+      overflow: hidden;
     }
 
-    #map {
-      width: 95vw;
-      height: 90vh;
-      margin: 5vh auto;
-      border-radius: 12px;
-      box-shadow: 0 10px 24px rgba(0,0,0,0.1);
-      border: 1px solid #e5e7eb;
-    }
-
-    .legend {
-      padding: 10px 12px;
-      background: white;
-      line-height: 1.6;
-      border-radius: 8px;
-      box-shadow: 0 0 15px rgba(0,0,0,0.2);
-      font-size: 13px;
-    }
-
-    .legend b {
-      font-size: 13px;
-    }
-
-    .legend i {
-      width: 14px;
-      height: 14px;
-      float: left;
-      margin-right: 8px;
-      margin-top: 4px;
-      opacity: 0.9;
-      border-radius: 50%;
-      border: 1px solid #fff;
-    }
-
-    .layer-toggle {
-      padding: 10px 12px;
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 0 15px rgba(0,0,0,0.2);
-      font-size: 13px;
-      line-height: 1.8;
-    }
-
-    .layer-toggle label {
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .modal-backdrop {
+    #sidebar {
       position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.35);
+      left: 0; top: 0;
+      width: 300px;
+      height: 100vh;
+      background: #1e293b;
+      color: #e2e8f0;
       display: flex;
-      align-items: center;
-      justify-content: center;
+      flex-direction: column;
+      overflow: hidden;
       z-index: 1000;
     }
 
-    .modal {
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-      padding: 16px 20px;
-      width: min(92vw, 1200px);
-      max-height: 90vh;
-      overflow: auto;
+    #sidebar-header {
+      padding: 14px 16px;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
     }
 
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
+    #sidebar-header h2 { font-size: 14px; color: #f1f5f9; margin-bottom: 3px; }
+    #sidebar-subtitle  { font-size: 11px; color: #94a3b8; }
+
+    #sidebar-filter {
+      padding: 8px 12px;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
     }
 
-    .modal-header h2 {
-      margin: 0;
-      font-size: 18px;
+    #outage-search {
+      width: 100%;
+      padding: 5px 8px;
+      font-size: 12px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 5px;
+      color: #e2e8f0;
+      outline: none;
     }
 
-    #modal-close {
-      border: none;
-      background: transparent;
-      font-size: 20px;
+    #outage-list { flex: 1; overflow-y: auto; }
+    #outage-list::-webkit-scrollbar { width: 4px; }
+    #outage-list::-webkit-scrollbar-track { background: #1e293b; }
+    #outage-list::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+
+    .outage-item {
+      padding: 9px 12px;
+      border-bottom: 1px solid #263248;
       cursor: pointer;
+      transition: background 0.12s;
+    }
+    .outage-item:hover  { background: #293548; }
+    .outage-item.active { background: #1d3a5f; border-left: 3px solid #3b82f6; padding-left: 9px; }
+
+    .outage-feeder { font-size: 11px; font-weight: bold; color: #e2e8f0; line-height: 1.4; margin-bottom: 3px; }
+    .outage-meta   { font-size: 10px; color: #94a3b8; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+    .badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+    .badge-red    { background: #7f1d1d; color: #fca5a5; }
+    .badge-orange { background: #78350f; color: #fcd34d; }
+    .badge-blue   { background: #1e3a5f; color: #93c5fd; }
+
+    #sidebar-footer {
+      padding: 8px 12px;
+      background: #0f172a;
+      border-top: 1px solid #334155;
+      font-size: 10px;
+      color: #475569;
     }
 
-    .modal-body {
-      font-size: 14px;
+    #map {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
     }
 
-    .control-row {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-bottom: 12px;
+    #search-container {
+      position: fixed;
+      top: 14px;
+      left: 320px;
+      z-index: 1001;
     }
-
-    .control-row select,
-    .control-row button {
-      padding: 8px 10px;
-      font-size: 13px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      background: white;
-    }
-
-    .control-row button {
-      cursor: pointer;
-      background: #f9fafb;
-    }
-
-    #plot-container {
-      min-height: 420px;
-    }
-
-    #loading-message {
-      color: #4b5563;
-      margin-bottom: 10px;
-    }
-
-    #error-message {
-      color: #b91c1c;
-      margin-bottom: 10px;
-      font-weight: 600;
-    }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-
-  <div id="search-container" style="
-    position: fixed;
-    top: 20px;
-    left: 50px;
-    z-index:1001;
-  ">
-    <div style="
-      padding: 8px 10px;
+    #search-container > div {
+      padding: 6px 8px;
       background: white;
       border-radius: 8px;
       box-shadow: 0 0 10px rgba(0,0,0,0.2);
       display: flex;
-      gap: 6px;
+      gap: 5px;
       align-items: center;
-    ">
-      <input
-        id="search-input"
-        type="text"
-        placeholder="Naziv stanice..."
-        style="padding:4px 8px;font-size:13px;min-width:200px;border:1px solid #d1d5db;border-radius:4px;"
-      />
-      <button
-        id="search-btn"
-        style="padding:4px 8px;font-size:13px;border-radius:4px;border:1px solid #d1d5db;background:#f9fafb;cursor:pointer;"
-      >
-        Pronađi
-      </button>
+    }
+    #search-input {
+      padding: 4px 7px; font-size: 12px; min-width: 180px;
+      border: 1px solid #d1d5db; border-radius: 4px;
+    }
+    #search-btn {
+      padding: 4px 8px; font-size: 12px;
+      border-radius: 4px; border: 1px solid #d1d5db;
+      background: #f9fafb; cursor: pointer;
+    }
+
+    .legend {
+      padding: 10px 12px; background: white;
+      line-height: 1.6; border-radius: 8px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.2); font-size: 13px;
+    }
+    .legend b { font-size: 13px; }
+    .legend i {
+      width: 14px; height: 14px; float: left;
+      margin-right: 8px; margin-top: 4px;
+      opacity: 0.9; border-radius: 50%; border: 1px solid #fff;
+    }
+
+    .layer-toggle {
+      padding: 10px 12px; background: white;
+      border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.2);
+      font-size: 13px; line-height: 1.8;
+    }
+    .layer-toggle label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.35);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 2000;
+    }
+    .modal {
+      background: white; border-radius: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      padding: 16px 20px;
+      width: min(92vw, 1200px); max-height: 90vh; overflow: auto;
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .modal-header h2 { margin: 0; font-size: 18px; }
+    #modal-close { border: none; background: transparent; font-size: 20px; cursor: pointer; }
+    .modal-body { font-size: 14px; }
+
+    .control-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    .control-row select, .control-row button {
+      padding: 8px 10px; font-size: 13px;
+      border: 1px solid #d1d5db; border-radius: 6px; background: white;
+    }
+    .control-row button { cursor: pointer; background: #f9fafb; }
+    #plot-container { min-height: 420px; }
+    #loading-message { color: #4b5563; margin-bottom: 10px; }
+    #error-message   { color: #b91c1c; margin-bottom: 10px; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <div id="map"></div>
+
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <h2>⚡ Nestanci struje</h2>
+      <p id="sidebar-subtitle">Učitavam...</p>
+    </div>
+    <div id="sidebar-filter">
+      <input id="outage-search" type="text" placeholder="Pretraži feeder..." />
+    </div>
+    <div id="outage-list"></div>
+    <div id="sidebar-footer">Klik na nestanak → prikaži na mapi</div>
+  </div>
+
+  <div id="search-container">
+    <div>
+      <input id="search-input" type="text" placeholder="Naziv stanice..." />
+      <button id="search-btn">Pronađi</button>
     </div>
   </div>
 
@@ -190,10 +200,9 @@
           <select id="feeder-select"></select>
           <button id="load-plot-btn" type="button">Prikaži graf</button>
         </div>
-
         <div id="loading-message" style="display:none;">Učitavanje...</div>
-        <div id="error-message" style="display:none;"></div>
-        <div id="modal-info" style="font-size:13px;color:#4b5563;margin-bottom:12px;"></div>
+        <div id="error-message"   style="display:none;"></div>
+        <div id="modal-info"      style="font-size:13px;color:#4b5563;margin-bottom:12px;"></div>
         <div id="plot-container"></div>
       </div>
     </div>
@@ -203,18 +212,27 @@
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 
   <script>
+    // SVG renderer za sve — jedini način da linije I markeri budu klikabilni
+    // DT-ovi se skrivaju ispod zoom 11 zbog performansi (5000+ markera)
+    const svgRenderer = L.svg({ padding: 0.5 });
+
     const map = L.map('map').setView([9.08, 8.67], 6);
 
+    // Linije ispod markera vizualno
     map.createPane('linesPane');
-    map.getPane('linesPane').style.zIndex = 200;
+    map.getPane('linesPane').style.zIndex = 390;
 
-    map.createPane('markersPane');
-    map.getPane('markersPane').style.zIndex = 400;
+    // Markeri iznad linija — SVG, normalni DOM klikovi na svemu
+    map.createPane('dtPane');
+    map.getPane('dtPane').style.zIndex = 400;
 
-    const lineLayers = {
-      feeder33: L.layerGroup(),
-      feeder11: L.layerGroup()
-    };
+    map.createPane('ssPane');
+    map.getPane('ssPane').style.zIndex = 401;
+
+    map.createPane('tsPane');
+    map.getPane('tsPane').style.zIndex = 402;
+
+    const lineLayers = { feeder33: L.layerGroup(), feeder11: L.layerGroup() };
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap'
@@ -225,7 +243,6 @@
       if (tip === "feeder11") return "#00b894";
       return "#636e72";
     }
-
     function getLineWeight(tip) {
       if (tip === "feeder33") return 4;
       if (tip === "feeder11") return 2.5;
@@ -233,292 +250,219 @@
     }
 
     fetch("/static/nigeria.json")
-      .then(res => res.json())
-      .then(data => {
-        L.geoJSON(data, {
-          style: { color: "#333", weight: 2, fillOpacity: 0.05, interactive: false }
-        }).addTo(map);
-      });
+      .then(r => r.json())
+      .then(data => L.geoJSON(data, {
+        style: { color: "#333", weight: 2, fillOpacity: 0.05, interactive: false }
+      }).addTo(map));
 
-    const modalEl = document.getElementById('details-modal');
-    const modalTitleEl = document.getElementById('modal-title');
-    const modalInfoEl = document.getElementById('modal-info');
-    const modalCloseBtn = document.getElementById('modal-close');
-    const feederSelectEl = document.getElementById('feeder-select');
-    const loadPlotBtnEl = document.getElementById('load-plot-btn');
+    const MARKER_CONFIG = {
+      transmission: { color: "#ff4757", radius: 18, label: "Transmission (TS)", pane: "tsPane", renderer: svgRenderer },
+      substation:   { color: "#3742fa", radius: 13, label: "Substation (SS)",   pane: "ssPane", renderer: svgRenderer },
+      distribution: { color: "#2ed573", radius: 7,  label: "Distribution (DT)", pane: "dtPane", renderer: svgRenderer },
+    };
+
+    // ── Station modal ─────────────────────────────────────────────────────
+    const modalEl           = document.getElementById('details-modal');
+    const modalTitleEl      = document.getElementById('modal-title');
+    const modalInfoEl       = document.getElementById('modal-info');
+    const modalCloseBtn     = document.getElementById('modal-close');
+    const feederSelectEl    = document.getElementById('feeder-select');
+    const loadPlotBtnEl     = document.getElementById('load-plot-btn');
     const stationControlsEl = document.getElementById('station-controls');
-    const loadingMessageEl = document.getElementById('loading-message');
-    const errorMessageEl = document.getElementById('error-message');
-    const plotContainerEl = document.getElementById('plot-container');
+    const loadingMessageEl  = document.getElementById('loading-message');
+    const errorMessageEl    = document.getElementById('error-message');
+    const plotContainerEl   = document.getElementById('plot-container');
 
     let currentStationContext = null;
-    let allFeatures = [];
-    const featureMarkers = {};
-    const markersByStationKey = {};
-    const defaultMarkerStyleByStationKey = {};
-    let allLineLeafletLayers = [];
-    let selectedLineLayer = null;
 
     function clearModalState() {
       stationControlsEl.style.display = 'none';
-      loadingMessageEl.style.display = 'none';
-      errorMessageEl.style.display = 'none';
-      errorMessageEl.textContent = '';
-      modalInfoEl.textContent = '';
-      feederSelectEl.innerHTML = '';
-      plotContainerEl.innerHTML = '';
+      loadingMessageEl.style.display  = 'none';
+      errorMessageEl.style.display    = 'none';
+      errorMessageEl.textContent      = '';
+      modalInfoEl.textContent         = '';
+      feederSelectEl.innerHTML        = '';
+      plotContainerEl.innerHTML       = '';
     }
 
-    function openModal() {
-      modalEl.style.display = 'flex';
-    }
+    function openModal()  { modalEl.style.display = 'flex'; }
+    function closeModal() { modalEl.style.display = 'none'; clearModalState(); currentStationContext = null; }
 
-    function closeModal() {
-      modalEl.style.display = 'none';
-      clearModalState();
-      currentStationContext = null;
+    function setLoading(v, msg = 'Učitavanje...') {
+      loadingMessageEl.style.display = v ? 'block' : 'none';
+      loadingMessageEl.textContent   = msg;
     }
-
-    function setLoading(isLoading, message = 'Učitavanje...') {
-      loadingMessageEl.style.display = isLoading ? 'block' : 'none';
-      loadingMessageEl.textContent = message;
-    }
-
-    function setError(message) {
-      errorMessageEl.style.display = message ? 'block' : 'none';
-      errorMessageEl.textContent = message || '';
+    function setError(msg) {
+      errorMessageEl.style.display = msg ? 'block' : 'none';
+      errorMessageEl.textContent   = msg || '';
     }
 
     function stationTipToApiType(tip) {
       if (tip === 'distribution') return 'DT';
-      if (tip === 'substation') return 'SS';
+      if (tip === 'substation')   return 'SS';
       if (tip === 'transmission') return 'TS';
       return null;
     }
 
-    async function fetchStationOptions(stationType, stationId) {
-      const res = await fetch(`/api/station-options/${stationType}/${stationId}`);
+    async function fetchStationOptions(type, id) {
+      const res  = await fetch(`/api/station-options/${type}/${id}`);
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Greška pri učitavanju feeder opcija');
-      }
+      if (!res.ok) throw new Error(data.error || 'Greška');
       return data;
     }
 
-    async function fetchStationPlot(stationType, stationId, feederId = null) {
-      let url = `/api/station-plot/${stationType}/${stationId}`;
-      if (feederId !== null && feederId !== undefined) {
+    async function fetchStationPlot(type, id, feederId = null) {
+      let url = `/api/station-plot/${type}/${id}`;
+      if (feederId !== null && feederId !== undefined)
         url += `?feeder_id=${encodeURIComponent(feederId)}`;
-      }
-
-      const res = await fetch(url);
+      const res  = await fetch(url);
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Greška pri učitavanju grafa');
-      }
+      if (!res.ok) throw new Error(data.error || 'Greška');
       return data;
     }
 
-    function renderPlotlyFigure(figure) {
+    function renderPlotly(figure) {
       plotContainerEl.innerHTML = '';
-      const plotDiv = document.createElement('div');
-      plotDiv.id = 'station-plotly-div';
-      plotContainerEl.appendChild(plotDiv);
-
-      Plotly.newPlot(plotDiv, figure.data, figure.layout, {
-        responsive: true,
-        displaylogo: false
-      });
+      const div = document.createElement('div');
+      plotContainerEl.appendChild(div);
+      Plotly.newPlot(div, figure.data, figure.layout, { responsive: true, displaylogo: false });
     }
 
     function populateFeederDropdown(feeders) {
       feederSelectEl.innerHTML = '';
-
-      if (!feeders || feeders.length === 0) {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = 'Nema dostupnih feeder-a';
-        feederSelectEl.appendChild(opt);
+      if (!feeders || !feeders.length) {
+        const o = document.createElement('option');
+        o.textContent = 'Nema dostupnih feedera';
+        feederSelectEl.appendChild(o);
         return;
       }
-
-      feeders.forEach((f) => {
-        const opt = document.createElement('option');
-        opt.value = String(f.id);
-
-        let label = `${f.name} [${f.role}]`;
-        if (!f.has_readings) {
-          label += ' - nema očitanja';
-        }
-
-        opt.textContent = label;
-        opt.disabled = !f.has_readings;
-        feederSelectEl.appendChild(opt);
+      feeders.forEach(f => {
+        const o      = document.createElement('option');
+        o.value       = String(f.id);
+        o.textContent = `${f.name} [${f.role}]${f.has_readings ? '' : ' - nema očitanja'}`;
+        o.disabled    = !f.has_readings;
+        feederSelectEl.appendChild(o);
       });
-
-      const firstEnabled = Array.from(feederSelectEl.options).find(o => !o.disabled);
-      if (firstEnabled) {
-        feederSelectEl.value = firstEnabled.value;
-      }
+      const first = Array.from(feederSelectEl.options).find(o => !o.disabled);
+      if (first) feederSelectEl.value = first.value;
     }
 
     async function loadPlotForCurrentSelection() {
       if (!currentStationContext) return;
-
       const { stationType, stationId } = currentStationContext;
       const feederId = feederSelectEl.value ? parseInt(feederSelectEl.value, 10) : null;
-
       try {
-        setError('');
-        setLoading(true, 'Generišem graf...');
-        const payload = await fetchStationPlot(stationType, stationId, feederId);
-        renderPlotlyFigure(payload.figure);
-      } catch (err) {
-        plotContainerEl.innerHTML = '';
-        setError(err.message);
+        setError(''); setLoading(true, 'Generišem graf...');
+        renderPlotly((await fetchStationPlot(stationType, stationId, feederId)).figure);
+      } catch(err) {
+        plotContainerEl.innerHTML = ''; setError(err.message);
       } finally {
         setLoading(false);
       }
     }
 
-    async function openStationAnalysis(stationTip, stationId, stationName) {
-      const stationType = stationTipToApiType(stationTip);
+    async function openStationAnalysis(tip, stationId, stationName) {
+      const stationType = stationTipToApiType(tip);
       if (!stationType || !stationId) return;
-
       currentStationContext = { stationType, stationId, stationName };
       modalTitleEl.textContent = `${stationName || 'Stanica'} — analiza`;
-      clearModalState();
-      openModal();
+      clearModalState(); openModal();
       setLoading(true, 'Učitavam stanicu...');
-
       try {
         const options = await fetchStationOptions(stationType, stationId);
-
         if (stationType === 'DT') {
-          modalInfoEl.textContent = `DT analiza se generiše direktno za izabranu stanicu.`;
-          const payload = await fetchStationPlot(stationType, stationId);
-          renderPlotlyFigure(payload.figure);
+          renderPlotly((await fetchStationPlot(stationType, stationId)).figure);
           return;
         }
-
         stationControlsEl.style.display = 'flex';
         populateFeederDropdown(options.feeders);
-
-        if (stationType === 'TS') {
-          modalInfoEl.textContent = 'Izaberi feeder koji izlazi iz TS stanice.';
-        } else if (stationType === 'SS') {
-          modalInfoEl.textContent = 'Izaberi feeder povezan sa SS stanicom.';
-        }
-
-        const hasEnabledOption = Array.from(feederSelectEl.options).some(o => !o.disabled && o.value);
-        if (hasEnabledOption) {
-          await loadPlotForCurrentSelection();
-        } else {
-          setError('Nijedan feeder sa očitanjima nije dostupan za ovu stanicu.');
-        }
-      } catch (err) {
+        modalInfoEl.textContent = stationType === 'TS'
+          ? 'Izaberi feeder koji izlazi iz TS stanice.'
+          : 'Izaberi feeder povezan sa SS stanicom.';
+        const hasEnabled = Array.from(feederSelectEl.options).some(o => !o.disabled && o.value);
+        if (hasEnabled) await loadPlotForCurrentSelection();
+        else setError('Nijedan feeder sa očitanjima nije dostupan.');
+      } catch(err) {
         setError(err.message);
       } finally {
         setLoading(false);
       }
     }
 
-    loadPlotBtnEl.addEventListener('click', async () => {
-      await loadPlotForCurrentSelection();
-    });
-
+    loadPlotBtnEl.addEventListener('click', () => loadPlotForCurrentSelection());
     modalCloseBtn.addEventListener('click', closeModal);
-    modalEl.addEventListener('click', (e) => {
-      if (e.target === modalEl) {
-        closeModal();
-      }
-    });
+    modalEl.addEventListener('click', (e) => { if (e.target === modalEl) closeModal(); });
+
+    // ── Map state ─────────────────────────────────────────────────────────
+    let allFeatures           = [];
+    const featureMarkers      = {};
+    const markersByStationKey = {};
+    const defaultStyleByKey   = {};
+    let allLineLeafletLayers  = [];
+    let selectedLineLayer     = null;
+    let activeOutageLayer     = null;
+    const lineLayerByName     = {};
+
+    // station_keys on each feeder line → used to find which markers to colour
+    // when outage is highlighted
+    const feederStationKeys   = {};  // normName → station_keys[]
+
+    function normalizeName(s) {
+      return (s || "").toLowerCase().replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+    }
 
     function resetAllLines() {
-      allLineLeafletLayers.forEach((layer) => {
-        const tip = layer.feature?.properties?.tip;
-        layer.setStyle({
-          color: getLineColor(tip),
-          weight: getLineWeight(tip),
-          opacity: 0.75
-        });
+      allLineLeafletLayers.forEach(l => {
+        const tip = l.feature?.properties?.tip;
+        l.setStyle({ color: getLineColor(tip), weight: getLineWeight(tip), opacity: 0.75 });
       });
     }
 
     function resetAllStations() {
-      Object.entries(markersByStationKey).forEach(([stationKey, marker]) => {
-        const baseStyle = defaultMarkerStyleByStationKey[stationKey];
-        if (!baseStyle) return;
-
-        marker.setStyle({
-          radius: baseStyle.radius,
-          fillColor: baseStyle.fillColor,
-          color: baseStyle.color,
-          weight: baseStyle.weight,
-          fillOpacity: baseStyle.fillOpacity,
-          opacity: baseStyle.opacity
-        });
+      Object.entries(markersByStationKey).forEach(([key, marker]) => {
+        const s = defaultStyleByKey[key];
+        if (!s) return;
+        marker.setStyle({ radius: s.radius, fillColor: s.fillColor, color: s.color,
+          weight: s.weight, fillOpacity: s.fillOpacity, opacity: s.opacity });
       });
     }
 
     function resetSelectedLine() {
       selectedLineLayer = null;
+      activeOutageLayer = null;
       resetAllLines();
       resetAllStations();
     }
 
-    function bringLineToFront(layer) {
-      if (layer && typeof layer.bringToFront === 'function') {
-        layer.bringToFront();
-      }
+    function clearOutageHighlight() {
+      activeOutageLayer = null;
+      resetAllLines();
+      resetAllStations();
+      document.querySelectorAll('.outage-item.active').forEach(el => el.classList.remove('active'));
     }
 
     function dimAllLinesExcept(activeLayer) {
-      allLineLeafletLayers.forEach((layer) => {
-        const tip = layer.feature?.properties?.tip;
-
-        if (layer === activeLayer) {
-          layer.setStyle({
-            color: getLineColor(tip),
-            weight: getLineWeight(tip) + 5,
-            opacity: 1
-          });
-          bringLineToFront(layer);
+      allLineLeafletLayers.forEach(l => {
+        const tip = l.feature?.properties?.tip;
+        if (l === activeLayer) {
+          l.setStyle({ color: getLineColor(tip), weight: getLineWeight(tip) + 5, opacity: 1 });
         } else {
-          layer.setStyle({
-            color: "#c7cdd4",
-            weight: Math.max(1, getLineWeight(tip) - 0.3),
-            opacity: 0.08
-          });
+          l.setStyle({ color: "#c7cdd4", weight: Math.max(1, getLineWeight(tip) - 0.3), opacity: 0.08 });
         }
       });
     }
 
-    function dimStationsExcept(stationKeysToKeep) {
-      const keepSet = new Set(stationKeysToKeep || []);
-
-      Object.entries(markersByStationKey).forEach(([stationKey, marker]) => {
-        const baseStyle = defaultMarkerStyleByStationKey[stationKey];
-        if (!baseStyle) return;
-
-        if (keepSet.has(stationKey)) {
-          marker.setStyle({
-            radius: baseStyle.radius + 1,
-            fillColor: baseStyle.fillColor,
-            color: "#111827",
-            weight: 3,
-            fillOpacity: 1,
-            opacity: 1
-          });
+    function dimStationsExcept(keepKeys) {
+      const keepSet = new Set(keepKeys || []);
+      Object.entries(markersByStationKey).forEach(([key, marker]) => {
+        const s = defaultStyleByKey[key];
+        if (!s) return;
+        if (keepSet.has(key)) {
+          marker.setStyle({ radius: s.radius + 1, fillColor: s.fillColor,
+            color: "#111827", weight: 3, fillOpacity: 1, opacity: 1 });
         } else {
-          marker.setStyle({
-            radius: baseStyle.radius,
-            fillColor: "#d1d5db",
-            color: "#b0b7c3",
-            weight: 1,
-            fillOpacity: 0.12,
-            opacity: 0.18
-          });
+          marker.setStyle({ radius: s.radius, fillColor: "#d1d5db",
+            color: "#b0b7c3", weight: 1, fillOpacity: 0.12, opacity: 0.18 });
         }
       });
     }
@@ -529,124 +473,143 @@
       dimStationsExcept(layer.stationKeys || []);
     }
 
-    map.on('click', function () {
+    map.on('click', function() {
+      clearOutageHighlight();
       resetSelectedLine();
     });
 
-    fetch("/data/vodovi")
-      .then(res => res.json())
-      .then(data => {
-        data.features.forEach((feature) => {
-          const tip = feature.properties.tip;
-          const color = getLineColor(tip);
-          const weight = getLineWeight(tip);
+    // ── Highlight outage on map ───────────────────────────────────────────
+    function highlightOutage(feederName, durationMin, confidencePct, itemEl) {
+      clearOutageHighlight();
+      if (itemEl) itemEl.classList.add('active');
 
-          const layer = L.geoJSON(feature, {
+      const key   = normalizeName(feederName);
+      const group = lineLayerByName[key];
+
+      if (!group) return;
+
+      activeOutageLayer = group;
+
+      // Dim all lines and stations
+      allLineLeafletLayers.forEach(l => {
+        l.setStyle({ color: "#1e293b", weight: 1, opacity: 0.12 });
+      });
+      Object.entries(markersByStationKey).forEach(([mKey, marker]) => {
+        marker.setStyle({ fillColor: "#334155", color: "#1e293b",
+          weight: 1, fillOpacity: 0.15, opacity: 0.15 });
+      });
+
+      // Highlight feeder line black
+      group.eachLayer(l => {
+        l.setStyle({ color: "#000000", weight: 7, opacity: 1 });
+        l.bringToFront();
+      });
+
+      // Colour stations on this feeder black
+      const stKeys = feederStationKeys[key] || [];
+      stKeys.forEach(stKey => {
+        const marker = markersByStationKey[stKey];
+        if (!marker) return;
+        marker.setStyle({
+          fillColor: "#000000",
+          color: "#ffffff",
+          weight: 2,
+          fillOpacity: 1,
+          opacity: 1
+        });
+      });
+
+      // Zoom to feeder
+      try {
+        const bounds = group.getBounds();
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [60, 60], maxZoom: 12 });
+      } catch(e) {}
+    }
+
+    // ── Vodovi ────────────────────────────────────────────────────────────
+    fetch("/data/vodovi")
+      .then(r => r.json())
+      .then(data => {
+        data.features.forEach(feature => {
+          const tip        = feature.properties.tip;
+          const naziv      = feature.properties.naziv || "";
+          const stationKeys = feature.properties.station_keys || [];
+          const color      = getLineColor(tip);
+          const weight     = getLineWeight(tip);
+          const group      = L.layerGroup();
+
+          L.geoJSON(feature, {
             pane: 'linesPane',
-            style: {
-              color: color,
-              weight: weight,
-              opacity: 0.75
-            },
-            onEachFeature: function (f, l) {
-              l.stationKeys = f.properties.station_keys || [];
+            style: { color, weight, opacity: 0.75 },
+            onEachFeature: function(f, l) {
+              l.stationKeys = stationKeys;
               allLineLeafletLayers.push(l);
 
               l.bindPopup(`
                 <div style="text-align:center">
                   <b style="color:${color}">${tip.toUpperCase()}</b><br>
-                  <strong>${f.properties.naziv || "Nepoznat vod"}</strong><br>
-                  Povezanih čvorova: ${f.properties.children_count || 0}<br>
-                  ${f.properties.nameplate_rating ? `Rating: ${f.properties.nameplate_rating}<br>` : ""}
-                </div>
-              `);
+                  <strong>${naziv || "Nepoznat vod"}</strong><br>
+                  Povezanih čvorova: ${f.properties.children_count || 0}
+                  ${f.properties.nameplate_rating ? `<br>Rating: ${f.properties.nameplate_rating}` : ""}
+                </div>`);
 
-              l.on('mouseover', function () {
-                if (selectedLineLayer !== l) {
-                  l.setStyle({
-                    weight: getLineWeight(tip) + 1,
-                    opacity: 0.95
-                  });
-                }
+              l.on('mouseover', function() {
+                if (selectedLineLayer !== l && !activeOutageLayer)
+                  l.setStyle({ weight: getLineWeight(tip) + 1, opacity: 0.95 });
               });
-
-              l.on('mouseout', function () {
-                if (selectedLineLayer !== l) {
-                  l.setStyle({
-                    weight: getLineWeight(tip),
-                    opacity: 0.75
-                  });
-                }
+              l.on('mouseout', function() {
+                if (selectedLineLayer !== l && !activeOutageLayer)
+                  l.setStyle({ weight: getLineWeight(tip), opacity: 0.75 });
               });
-
-              l.on('click', function (e) {
+              l.on('click', function(e) {
                 L.DomEvent.stopPropagation(e);
+                clearOutageHighlight();
                 focusOnLine(l);
-
-                map.fitBounds(l.getBounds(), {
-                  padding: [30, 30]
-                });
+                map.fitBounds(l.getBounds(), { padding: [30, 30] });
               });
             }
-          });
+          }).addTo(group);
 
-          if (lineLayers[tip]) {
-            lineLayers[tip].addLayer(layer);
+          const normKey = normalizeName(naziv);
+          if (normKey) {
+            lineLayerByName[normKey]    = group;
+            feederStationKeys[normKey]  = stationKeys;
           }
+          if (lineLayers[tip]) lineLayers[tip].addLayer(group);
         });
 
         lineLayers.feeder33.addTo(map);
         lineLayers.feeder11.addTo(map);
-      })
-      .catch(err => console.error("Greška pri učitavanju vodova:", err));
+        loadOutages();
+      });
 
+    // ── Trafostanice ──────────────────────────────────────────────────────
     fetch("/data/trafostanice")
-      .then(res => res.json())
+      .then(r => r.json())
       .then(data => {
         allFeatures = data.features;
-
-        const colors = {
-          transmission: "#ff4757",
-          substation: "#3742fa",
-          distribution: "#2ed573"
-        };
-
-        const sizeConfig = {
-          transmission: 18,
-          substation: 13,
-          distribution: 7
-        };
-
         const counts = { transmission: 0, substation: 0, distribution: 0 };
-
         const layers = {
           transmission: L.layerGroup(),
-          substation: L.layerGroup(),
+          substation:   L.layerGroup(),
           distribution: L.layerGroup()
         };
 
         allFeatures.forEach((f, idx) => {
-          const tip = f.properties.tip;
+          const tip       = f.properties.tip;
           const stationId = f.properties.id;
-          const stationKey = `${tip}:${stationId}`;
-
-          if (!counts[tip]) counts[tip] = 0;
+          const key       = `${tip}:${stationId}`;
+          if (!(tip in counts)) return;
           counts[tip]++;
 
-          const r = sizeConfig[tip] || 8;
-          const color = colors[tip] || "#ffa502";
-
+          const cfg = MARKER_CONFIG[tip];
           const lat = f.geometry.coordinates[1];
           const lon = f.geometry.coordinates[0];
 
           const marker = L.circleMarker([lat, lon], {
-            pane: 'markersPane',
-            radius: r,
-            fillColor: color,
-            color: "#ffffff",
-            weight: 1.5,
-            fillOpacity: 0.85,
-            opacity: 1
+            renderer: cfg.renderer, pane: cfg.pane,
+            radius: cfg.radius, fillColor: cfg.color,
+            color: "#ffffff", weight: 1.5, fillOpacity: 0.85, opacity: 1
           });
 
           marker.on('click', async (e) => {
@@ -655,150 +618,168 @@
             await openStationAnalysis(tip, stationId, f.properties.naziv);
           });
 
-          marker.bindTooltip(`${f.properties.naziv}`, {
-            direction: 'top',
-            offset: [0, -6]
-          });
+          marker.bindTooltip(f.properties.naziv || '', { direction: 'top', offset: [0, -6] });
 
           layers[tip].addLayer(marker);
-          featureMarkers[idx] = marker;
-          markersByStationKey[stationKey] = marker;
-          defaultMarkerStyleByStationKey[stationKey] = {
-            radius: r,
-            fillColor: color,
-            color: "#ffffff",
-            weight: 1.5,
-            fillOpacity: 0.85,
-            opacity: 1
+          featureMarkers[idx]      = marker;
+          markersByStationKey[key] = marker;
+          defaultStyleByKey[key]   = {
+            radius: cfg.radius, fillColor: cfg.color,
+            color: "#ffffff", weight: 1.5, fillOpacity: 0.85, opacity: 1
           };
         });
 
         layers.transmission.addTo(map);
         layers.substation.addTo(map);
-        layers.distribution.addTo(map);
+        buildLegend(counts, layers);
 
-        const legend = L.control({ position: 'bottomright' });
-        legend.onAdd = function () {
-          const div = L.DomUtil.create('div', 'legend');
-          div.innerHTML = '<b>Legenda</b><br>';
+        // DT-ovi vidljivi samo na zoom 11+ zbog performansi (5000+ SVG elemenata)
+        let dtLayerRef = layers.distribution;
+        let dtEnabled  = true;
 
-          const labels = {
-            transmission: 'Transmission (Velike)',
-            substation: 'Substation (Srednje)',
-            distribution: 'Distribution (Male)'
-          };
-
-          ['transmission', 'substation', 'distribution'].forEach(tip => {
-            div.innerHTML += `
-              <i style="background:${colors[tip]}"></i>
-              ${labels[tip]}: <b>${counts[tip] || 0}</b><br>
-            `;
-          });
-
-          div.innerHTML += `
-            <hr style="margin:8px 0;border:none;border-top:1px solid #e5e7eb;">
-            <b>Vodovi</b><br>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <span style="width:16px;height:0;border-top:4px solid #ff9f1a;"></span>
-              Feeder 33kV
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
-              <span style="width:16px;height:0;border-top:3px solid #00b894;"></span>
-              Feeder 11kV
-            </div>
-            <div style="margin-top:8px;color:#6b7280;font-size:12px;">
-              Klik na vod za fokus. Klik na stanicu za analizu.
-            </div>
-          `;
-
-          return div;
-        };
-        legend.addTo(map);
-
-        const toggle = L.control({ position: 'topright' });
-        toggle.onAdd = function () {
-          const div = L.DomUtil.create('div', 'layer-toggle');
-          div.innerHTML = '<b>Prikaz slojeva</b><br>';
-
-          div.innerHTML += `
-            <label>
-              <input type="checkbox" id="chk-transmission" checked />
-              Transmission
-            </label>
-            <label>
-              <input type="checkbox" id="chk-substation" checked />
-              Substation
-            </label>
-            <label>
-              <input type="checkbox" id="chk-distribution" checked />
-              Distribution
-            </label>
-            <label>
-              <input type="checkbox" id="chk-feeder33" checked />
-              Feeder 33kV
-            </label>
-            <label>
-              <input type="checkbox" id="chk-feeder11" checked />
-              Feeder 11kV
-            </label>
-          `;
-
-          L.DomEvent.disableClickPropagation(div);
-          return div;
-        };
-        toggle.addTo(map);
-
-        document.getElementById('chk-transmission').addEventListener('change', (e) => {
-          if (e.target.checked) map.addLayer(layers.transmission);
-          else map.removeLayer(layers.transmission);
-        });
-
-        document.getElementById('chk-substation').addEventListener('change', (e) => {
-          if (e.target.checked) map.addLayer(layers.substation);
-          else map.removeLayer(layers.substation);
-        });
-
-        document.getElementById('chk-distribution').addEventListener('change', (e) => {
-          if (e.target.checked) map.addLayer(layers.distribution);
-          else map.removeLayer(layers.distribution);
-        });
-
-        document.getElementById('chk-feeder33').addEventListener('change', (e) => {
-          if (e.target.checked) map.addLayer(lineLayers.feeder33);
-          else map.removeLayer(lineLayers.feeder33);
-        });
-
-        document.getElementById('chk-feeder11').addEventListener('change', (e) => {
-          if (e.target.checked) map.addLayer(lineLayers.feeder11);
-          else map.removeLayer(lineLayers.feeder11);
-        });
-      })
-      .catch(err => console.error("Greška pri učitavanju stanica:", err));
-
-    function searchStationByName() {
-      const input = document.getElementById('search-input');
-      const query = input.value.trim().toLowerCase();
-      if (!query) return;
-
-      let foundIdx = null;
-      for (let i = 0; i < allFeatures.length; i++) {
-        const name = (allFeatures[i].properties.naziv || '').toLowerCase();
-        if (name.includes(query)) {
-          foundIdx = i;
-          break;
+        function updateDtVisibility() {
+          if (dtEnabled && map.getZoom() >= 8) map.addLayer(dtLayerRef);
+          else map.removeLayer(dtLayerRef);
         }
-      }
+        map.on('zoomend', updateDtVisibility);
+        updateDtVisibility();
 
-      if (foundIdx === null) {
-        alert(`Nema stanice koja sadrži: "${query}"`);
+        window._dtLayerRef     = dtLayerRef;
+        window._updateDtVis    = updateDtVisibility;
+        window._setDtEnabled   = (v) => { dtEnabled = v; updateDtVisibility(); };
+      });
+
+    function buildLegend(counts, layers) {
+      const colors = {
+        transmission: MARKER_CONFIG.transmission.color,
+        substation:   MARKER_CONFIG.substation.color,
+        distribution: MARKER_CONFIG.distribution.color,
+      };
+
+      const legend = L.control({ position: 'bottomright' });
+      legend.onAdd = function() {
+        const div = L.DomUtil.create('div', 'legend');
+        div.innerHTML = '<b>Legenda</b><br>';
+        ['transmission','substation','distribution'].forEach(tip => {
+          div.innerHTML += `<i style="background:${colors[tip]}"></i>
+            ${MARKER_CONFIG[tip].label}: <b>${counts[tip] || 0}</b><br>`;
+        });
+        div.innerHTML += `
+          <hr style="margin:8px 0;border:none;border-top:1px solid #e5e7eb;">
+          <b>Vodovi</b><br>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="width:16px;height:0;border-top:4px solid #ff9f1a;display:inline-block;"></span> Feeder 33kV
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+            <span style="width:16px;height:0;border-top:3px solid #00b894;display:inline-block;"></span> Feeder 11kV
+          </div>
+          <div style="margin-top:8px;color:#6b7280;font-size:12px;">
+            Klik na vod za fokus. Klik na stanicu za analizu.
+          </div>`;
+        return div;
+      };
+      legend.addTo(map);
+
+      const toggle = L.control({ position: 'topright' });
+      toggle.onAdd = function() {
+        const div = L.DomUtil.create('div', 'layer-toggle');
+        div.innerHTML = `<b>Prikaz slojeva</b><br>
+          <label><input type="checkbox" id="chk-transmission" checked /> Transmission</label>
+          <label><input type="checkbox" id="chk-substation"   checked /> Substation</label>
+          <label><input type="checkbox" id="chk-distribution" checked /> Distribution</label>
+          <label><input type="checkbox" id="chk-feeder33"     checked /> Feeder 33kV</label>
+          <label><input type="checkbox" id="chk-feeder11"     checked /> Feeder 11kV</label>`;
+        L.DomEvent.disableClickPropagation(div);
+        return div;
+      };
+      toggle.addTo(map);
+
+      document.getElementById('chk-transmission').addEventListener('change', e =>
+        e.target.checked ? map.addLayer(layers.transmission) : map.removeLayer(layers.transmission));
+      document.getElementById('chk-substation').addEventListener('change', e =>
+        e.target.checked ? map.addLayer(layers.substation) : map.removeLayer(layers.substation));
+      document.getElementById('chk-distribution').addEventListener('change', e =>
+        window._setDtEnabled(e.target.checked));
+      document.getElementById('chk-feeder33').addEventListener('change', e =>
+        e.target.checked ? map.addLayer(lineLayers.feeder33) : map.removeLayer(lineLayers.feeder33));
+      document.getElementById('chk-feeder11').addEventListener('change', e =>
+        e.target.checked ? map.addLayer(lineLayers.feeder11) : map.removeLayer(lineLayers.feeder11));
+    }
+
+    // ── Outages sidebar ───────────────────────────────────────────────────
+    let allOutages = [];
+
+    function confidenceBadge(pct) {
+      if (pct >= 90) return `<span class="badge badge-red">${pct}%</span>`;
+      if (pct >= 70) return `<span class="badge badge-orange">${pct}%</span>`;
+      return `<span class="badge badge-blue">${pct}%</span>`;
+    }
+
+    function durationLabel(min) {
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return h > 0 ? `${h}h ${m}min` : `${m}min`;
+    }
+
+    function renderOutageList(outages) {
+      const list = document.getElementById('outage-list');
+      list.innerHTML = '';
+      if (!outages.length) {
+        list.innerHTML = '<div style="padding:16px;color:#64748b;font-size:12px;">Nema pronađenih nestanaka.</div>';
         return;
       }
+      outages.forEach(o => {
+        const item  = document.createElement('div');
+        item.className = 'outage-item';
+        const start = new Date(o.start);
+        const end   = new Date(o.end);
+        const fmt   = d => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        const dateLabel = `${start.getDate()}.${start.getMonth()+1}. ${fmt(start)} – ${fmt(end)}`;
+        item.innerHTML = `
+          <div class="outage-feeder">${o.feeder_name}</div>
+          <div class="outage-meta">
+            <span>⏱ ${durationLabel(o.duration_minutes)}</span>
+            ${confidenceBadge(o.confidence_pct)}
+            <span style="color:#64748b">${dateLabel}</span>
+          </div>`;
+        item.addEventListener('click', () =>
+          highlightOutage(o.feeder_name, o.duration_minutes, o.confidence_pct, item));
+        list.appendChild(item);
+      });
+    }
 
-      const f = allFeatures[foundIdx];
-      const lat = f.geometry.coordinates[1];
-      const lon = f.geometry.coordinates[0];
+    function loadOutages() {
+      fetch('/data/outages')
+        .then(r => r.json())
+        .then(data => {
+          allOutages = data.outages || [];
+          document.getElementById('sidebar-subtitle').textContent =
+            `${allOutages.length} nestanaka — ${data.analysis_days || 3} dana`;
+          renderOutageList(allOutages);
+        })
+        .catch(() => {
+          document.getElementById('sidebar-subtitle').textContent = 'Greška pri učitavanju';
+        });
+    }
 
-      const marker = featureMarkers[foundIdx];
+    document.getElementById('outage-search').addEventListener('input', function() {
+      const q = this.value.trim().toLowerCase();
+      renderOutageList(q
+        ? allOutages.filter(o => o.feeder_name.toLowerCase().includes(q))
+        : allOutages);
+    });
+
+    // ── Station search ────────────────────────────────────────────────────
+    function searchStationByName() {
+      const query = document.getElementById('search-input').value.trim().toLowerCase();
+      if (!query) return;
+      const idx = allFeatures.findIndex(f =>
+        (f.properties.naziv || '').toLowerCase().includes(query));
+      if (idx === -1) { alert(`Nema stanice koja sadrži: "${query}"`); return; }
+      const f      = allFeatures[idx];
+      const lat    = f.geometry.coordinates[1];
+      const lon    = f.geometry.coordinates[0];
+      const marker = featureMarkers[idx];
       if (marker) {
         map.flyTo([lat, lon], 10, { animate: true, duration: 1.0 });
         marker.openTooltip();
@@ -806,10 +787,8 @@
     }
 
     document.getElementById('search-btn').addEventListener('click', searchStationByName);
-    document.getElementById('search-input').addEventListener('keyup', (e) => {
-      if (e.key === 'Enter') {
-        searchStationByName();
-      }
+    document.getElementById('search-input').addEventListener('keyup', e => {
+      if (e.key === 'Enter') searchStationByName();
     });
   </script>
 </body>

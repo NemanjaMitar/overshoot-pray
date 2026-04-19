@@ -3,6 +3,7 @@ import os
 import sys
 import math
 import json
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from plotly.utils import PlotlyJSONEncoder
@@ -19,6 +20,7 @@ from database.repositories import (
 from get_data.plot_station import plot_station
 from get_data.fetch_ts import get_ts_feeders
 from get_data.fetch_ss import get_ss_feeders
+from outages.get_system_outages import get_system_outages_optimized
 
 app = Flask(__name__)
 
@@ -439,7 +441,16 @@ def station_plot(station_type, station_id):
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
+    
+_outages_cache = {"data": None, "ts": 0}
 
+@app.route("/data/outages")
+def data_outages():
+    global _outages_cache
+    if time.time() - _outages_cache["ts"] > 86400:  # refresh svaki dan
+        _outages_cache["data"] = get_system_outages_optimized(days=3)
+        _outages_cache["ts"]   = time.time()
+    return jsonify(_outages_cache["data"])
 
 if __name__ == "__main__":
     app.run(debug=True)
